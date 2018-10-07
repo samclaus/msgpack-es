@@ -12,7 +12,8 @@ export class Encoder {
         
     }
     
-    private static textEncoder = new TextEncoder();
+    private static readonly textEncoder = new TextEncoder();
+    private static readonly bitmask = 255;
 
     private static writeNil(buffer: Uint8Array, offset: number)
     {
@@ -75,7 +76,6 @@ export class Encoder {
     })
     {
         const length = data.length;
-        const bitmask = 255;
 
         if (length < (1 << 8))
         {
@@ -87,19 +87,83 @@ export class Encoder {
         {
             buffer[offset] = identifiers._2byte;
             buffer[offset + 1] = length >> 8;
-            buffer[offset + 2] = length & bitmask;
+            buffer[offset + 2] = length & this.bitmask;
             buffer.set(data, offset + 3);
         }
         else if (length < (1 << 32))
         {
             buffer[offset] = identifiers._4byte;
             buffer[offset + 1] = length >> 24;
-            buffer[offset + 2] = length & (bitmask << 16);
-            buffer[offset + 3] = length & (bitmask << 8);
-            buffer[offset + 4] = length & bitmask;
+            buffer[offset + 2] = length & (this.bitmask << 16);
+            buffer[offset + 3] = length & (this.bitmask << 8);
+            buffer[offset + 4] = length & this.bitmask;
             buffer.set(data, offset + 5);
         }
         else throw new Error("buffer too long to encode");
+    }
+
+    /**
+     * DOES NOT encode array elements. Only encodes that the following n items are
+     * in an array.
+     */
+    private static writeArray(data: any[], buffer: Uint8Array, offset: number)
+    {
+        if (data.length < 16)
+        {
+            buffer[offset] = 0x90 | data.length;
+        }
+        else if (data.length < (1 << 16))
+        {
+            buffer[offset] = 0xdc;
+            buffer[offset + 1] = data.length >> 8;
+            buffer[offset + 2] = data.length & this.bitmask;
+        }
+        else // ECMA dictates that array length will never exceed a uint32
+        {
+            buffer[offset] = 0xdd;
+            buffer[offset + 1] = data.length >> 24;
+            buffer[offset + 2] = data.length & (this.bitmask << 16);
+            buffer[offset + 3] = data.length & (this.bitmask << 8);
+            buffer[offset + 4] = data.length & this.bitmask;
+        }
+    }
+
+    /**
+     * DOES NOT encode map elements. Only encodes that the following n key-value pairs are
+     * in a map.
+     */
+    private static writeMap(data: object | Map<any, any>, buffer: Uint8Array, offset: number)
+    {
+        let numValues = 0;
+        if (data instanceof Map)
+        {
+            data.forEach(value => {
+                if (data !== )
+            });
+        }
+        else
+        {
+
+        }
+
+        if (data.length < 16)
+        {
+            buffer[offset] = 0x90 | data.length;
+        }
+        else if (data.length < (1 << 16))
+        {
+            buffer[offset] = 0xdc;
+            buffer[offset + 1] = data.length >> 8;
+            buffer[offset + 2] = data.length & this.bitmask;
+        }
+        else // ECMA dictates that array length will never exceed a uint32
+        {
+            buffer[offset] = 0xdd;
+            buffer[offset + 1] = data.length >> 24;
+            buffer[offset + 2] = data.length & (this.bitmask << 16);
+            buffer[offset + 3] = data.length & (this.bitmask << 8);
+            buffer[offset + 4] = data.length & this.bitmask;
+        }
     }
 
 }
