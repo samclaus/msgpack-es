@@ -1,5 +1,9 @@
 import { IEEE754 } from "./IEEE754";
 
+declare class Object {
+    static values(obj: object): any[];
+}
+
 /**
  * Class for encoding arrays, objects, and primitives to msgpack
  * format. You can create indepently configured instances, but you will
@@ -52,7 +56,7 @@ export class Encoder {
             catch
             {
                 // String specific error
-                throw new Error("string too long to encode");
+                throw new Error("string too long to encode (more than 2^32 - 1 UTF-8 characters)");
             }
         }
     }
@@ -99,38 +103,43 @@ export class Encoder {
             buffer[offset + 4] = length & this.bitmask;
             buffer.set(data, offset + 5);
         }
-        else throw new Error("buffer too long to encode");
+        else throw new Error("buffer too long to encode (more than 2^32 - 1 bytes)");
     }
 
     /**
      * DOES NOT encode array elements. Only encodes that the following n items are
-     * in an array.
+     * in an array. Excludes `undefined` elements.
      */
     private static writeArray(data: any[], buffer: Uint8Array, offset: number)
     {
-        if (data.length < 16)
+        let length = 0;
+        data.forEach(elem => {
+            if (elem !== undefined) ++length;
+        });
+
+        if (length < 16)
         {
-            buffer[offset] = 0x90 | data.length;
+            buffer[offset] = 0x90 | length;
         }
-        else if (data.length < (1 << 16))
+        else if (length < (1 << 16))
         {
             buffer[offset] = 0xdc;
-            buffer[offset + 1] = data.length >> 8;
-            buffer[offset + 2] = data.length & this.bitmask;
+            buffer[offset + 1] = length >> 8;
+            buffer[offset + 2] = length & this.bitmask;
         }
         else // ECMA dictates that array length will never exceed a uint32
         {
             buffer[offset] = 0xdd;
-            buffer[offset + 1] = data.length >> 24;
-            buffer[offset + 2] = data.length & (this.bitmask << 16);
-            buffer[offset + 3] = data.length & (this.bitmask << 8);
-            buffer[offset + 4] = data.length & this.bitmask;
+            buffer[offset + 1] = length >> 24;
+            buffer[offset + 2] = length & (this.bitmask << 16);
+            buffer[offset + 3] = length & (this.bitmask << 8);
+            buffer[offset + 4] = length & this.bitmask;
         }
     }
 
     /**
      * DOES NOT encode map elements. Only encodes that the following n key-value pairs are
-     * in a map.
+     * in a map. Excludes `undefined` values.
      */
     private static writeMap(data: object | Map<any, any>, buffer: Uint8Array, offset: number)
     {
@@ -138,32 +147,35 @@ export class Encoder {
         if (data instanceof Map)
         {
             data.forEach(value => {
-                if (data !== )
+                if (value !== undefined) ++numValues;
             });
         }
         else
         {
-
+            Object.values(data).forEach(value => {
+                if (value !== undefined) ++numValues;
+            });
         }
 
-        if (data.length < 16)
+        if (numValues < 16)
         {
-            buffer[offset] = 0x90 | data.length;
+            buffer[offset] = 0x80 | numValues;
         }
-        else if (data.length < (1 << 16))
+        else if (numValues < (1 << 16))
         {
-            buffer[offset] = 0xdc;
-            buffer[offset + 1] = data.length >> 8;
-            buffer[offset + 2] = data.length & this.bitmask;
+            buffer[offset] = 0xde;
+            buffer[offset + 1] = numValues >> 8;
+            buffer[offset + 2] = numValues & this.bitmask;
         }
-        else // ECMA dictates that array length will never exceed a uint32
+        else if (numValues < (1 << 32))
         {
-            buffer[offset] = 0xdd;
-            buffer[offset + 1] = data.length >> 24;
-            buffer[offset + 2] = data.length & (this.bitmask << 16);
-            buffer[offset + 3] = data.length & (this.bitmask << 8);
-            buffer[offset + 4] = data.length & this.bitmask;
+            buffer[offset] = 0xdf;
+            buffer[offset + 1] = numValues >> 24;
+            buffer[offset + 2] = numValues & (this.bitmask << 16);
+            buffer[offset + 3] = numValues & (this.bitmask << 8);
+            buffer[offset + 4] = numValues & this.bitmask;
         }
+        else throw new Error("map too large to encode (more than 2^32 - 1 defined values)");
     }
 
 }
