@@ -7,13 +7,62 @@ declare class Object {
 /**
  * Class for encoding arrays, objects, and primitives to msgpack
  * format. You can create indepently configured instances, but you will
- * most likely want to simply use the static methods and interfact with
+ * most likely want to simply use the static methods and interact with
  * the default/global Encoder.
  */
-export class Encoder {
+export class Encoder
+{
+    encode(data: any): Uint8Array
+    {
+        const buffer = new Uint8Array(this.computeLen(data));
+        this.recursiveEncode(data, buffer, 0);
+        return buffer;
+    }
 
-    encode(): Uint8Array {
-        
+    /**
+     * Compute the encoded length of a value.
+     */
+    private computeLen(data: any): number
+    {
+        switch (typeof data)
+        {
+            case "undefined":
+            case "function":
+                return 0;
+            case "boolean":
+                return 1;
+            case "number":
+                return 9;
+            case "string":
+                const utf8Length = Encoder.textEncoder.encode(data).length;
+                if (utf8Length < 32)
+                    return 1 + utf8Length;
+                else if (utf8Length < (1 << 8))
+                    return 2 + utf8Length;
+                else if (utf8Length < (1 << 16))
+                    return 3 + utf8Length;
+                else if (utf8Length < (1 << 32))
+                    return 5 + utf8Length;
+                else
+                    throw new Error("string too long to encode (more than 2^32 - 1 UTF-8 characters)");
+            case "object":
+                if (data === null)
+                    return 1;
+                if (data instanceof ArrayBuffer)
+                    return binLen(data.byteLength);
+                if (data instanceof Uint8Array)
+                    return binLen(data.length);
+                if (Array.isArray(data))
+                    return data.reduce((acc, elem) => acc + this.computeLen(elem), arrLen(data.length));
+                if (data instanceof Map) {
+                    
+                }
+        }
+    }
+
+    private recursiveEncode(data: any, buffer: Uint8Array, offset: number)
+    {
+
     }
     
     private static readonly textEncoder = new TextEncoder();
@@ -38,7 +87,7 @@ export class Encoder {
     {
         const utf8 = this.textEncoder.encode(data);
 
-        if (utf8.length < (1 << 5))
+        if (utf8.length < 32)
         {
             buffer[offset] = 0xa0 | length;
             buffer.set(utf8, offset + 1);
@@ -177,5 +226,43 @@ export class Encoder {
         }
         else throw new Error("map too large to encode (more than 2^32 - 1 defined values)");
     }
+}
 
+/**
+ * Computes the total [encoded] length of a binary buffer, given the length
+ * of the buffer, in bytes.
+ */
+function binLen(size: number): number
+{
+    if (size < (1 << 8))
+        return 2 + size;
+    if (size < (1 << 16))
+        return 3 + size;
+    return 5 + size;
+}
+
+/**
+ * Computes the length needed to encode an array PREFIX, given the number of
+ * elements. The length does not include the size of encoded elements.
+ */
+function arrLen(elementCount: number): number
+{
+    if (elementCount < 16)
+        return 1;
+    if (elementCount < (1 << 16))
+        return 3;
+    return 5;
+}
+
+/**
+ * Computes the length needed to encode a map PREFIX, given the number of keys
+ * in the map. The length does not include the size of encoded keys/elements.
+ */
+function mapLen(keyCount: number): number
+{
+    if (keyCount < 16)
+        return 1;
+    if (keyCount < (1 << 16))
+        return 3;
+    return 5;
 }
