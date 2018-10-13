@@ -29,9 +29,66 @@ export class Encoder
         return this.buffer.subarray(0, this.offset);
     }
 
-    private recursiveEncode(data: any)
+    private recursiveEncode = (data: any) =>
     {
+        switch (typeof data)
+        {
+            case "function":
+                throw new TypeError("cannot encode a function");
+            case "undefined":
+                this.writeNil();
+                break;
+            case "boolean":
+                this.writeBoolean(data);
+                break;
+            case "number":
+                this.writeNumber(data);
+                break;
+            case "string":
+                this.writeString(data);
+                break;
+            case "object":
+                if (data === null)
+                {
+                    this.writeNil();
+                }
+                else if (data instanceof Uint8Array || data instanceof ArrayBuffer)
+                {
+                    this.writeBinary(data);
+                }
+                else if (Array.isArray(data))
+                {
+                    this.writeArrayPrefix(data.length);
+                    data.forEach(this.recursiveEncode);
+                }
+                else if (data instanceof Map) // this is gonna need some work
+                {
+                    const validKeys = Array.from(data.keys()).filter(key => {
+                        const keyType = typeof key;
+                        const valType = typeof data.get(key);
 
+                        return keyType !== "function" && valType !== "function" && valType !== "undefined";
+                    });
+                    this.writeMapPrefix(validKeys.length);
+                    validKeys.forEach(key => {
+                        this.recursiveEncode(key);
+                        this.recursiveEncode(data.get(key));                        
+                    });
+                }
+                else
+                {
+                    const validKeys = Object.keys(data).filter(key => {
+                        const valType = typeof data[key];
+                        return valType !== "undefined" && valType !== "function";
+                    });
+                    this.writeMapPrefix(validKeys.length);
+                    validKeys.forEach(key => {
+                        this.recursiveEncode(key);
+                        this.recursiveEncode(data[key]);
+                    });
+                }
+                break;
+        }
     }
 
     private ensureSufficientSpace(bytesToEncode: number)
@@ -58,7 +115,7 @@ export class Encoder
         this.view.setUint8(this.offset++, value ? 0xc3 : 0xc2);
     }
     
-    private writeFloat64(value: number)
+    private writeNumber(value: number)
     {
         this.ensureSufficientSpace(9);
         this.view.setUint8(this.offset++, 0xcb);
