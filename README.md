@@ -8,7 +8,7 @@ configurable and general-purpose in the future.
 
 The following are on my list, in order of priority.
 
-- [ ] Working encoder
+- [X] Working encoder
 - [ ] Working decoder
 - [ ] ~~Write my own IEEE-754 encode/decode because the library I use has a sketchy license~~
 - [X] Use DataView to write float64s and other number types
