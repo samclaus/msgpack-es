@@ -1,8 +1,3 @@
-import { IEEE754 } from "./IEEE754";
-
-declare class Object {
-    static values(obj: object): any[];
-}
 
 /**
  * Class for encoding arrays, objects, and primitives to msgpack
@@ -12,95 +7,81 @@ declare class Object {
  */
 export class Encoder
 {
-    encode(data: any): Uint8Array
-    {
-        const buffer = new Uint8Array(this.computeLen(data));
-        this.recursiveEncode(data, buffer, 0);
-        return buffer;
-    }
+    private static readonly textEncoder = new TextEncoder();
 
     /**
-     * Compute the encoded length of a value.
+     * The starting buffer size when encoding an object, in KiB. The buffer will
+     * then be grown by factors of 2 as needed.
      */
-    private computeLen(data: any): number
+    initialBufferSize = 4;
+
+    private buffer: Uint8Array;
+    private view: DataView;
+    private offset: number;
+
+    encode(data: any): Uint8Array
     {
-        switch (typeof data)
+        this.buffer = new Uint8Array(this.initialBufferSize * 1024);
+        this.view = new DataView(this.buffer.buffer);
+        this.offset = 0;
+        this.recursiveEncode(data);
+
+        return this.buffer.subarray(0, this.offset);
+    }
+
+    private recursiveEncode(data: any)
+    {
+
+    }
+
+    private ensureSufficientSpace(bytesToEncode: number)
+    {
+        if (this.offset + bytesToEncode > this.view.byteLength)
         {
-            case "undefined":
-            case "function":
-                return 0;
-            case "boolean":
-                return 1;
-            case "number":
-                return 9;
-            case "string":
-                const utf8Length = Encoder.textEncoder.encode(data).length;
-                if (utf8Length < 32)
-                    return 1 + utf8Length;
-                else if (utf8Length < (1 << 8))
-                    return 2 + utf8Length;
-                else if (utf8Length < (1 << 16))
-                    return 3 + utf8Length;
-                else if (utf8Length < (1 << 32))
-                    return 5 + utf8Length;
-                else
-                    throw new Error("string too long to encode (more than 2^32 - 1 UTF-8 characters)");
-            case "object":
-                if (data === null)
-                    return 1;
-                if (data instanceof ArrayBuffer)
-                    return binLen(data.byteLength);
-                if (data instanceof Uint8Array)
-                    return binLen(data.length);
-                if (Array.isArray(data))
-                    return data.reduce((acc, elem) => acc + this.computeLen(elem), arrLen(data.length));
-                if (data instanceof Map) {
-                    
-                }
+            const newBuffer = new Uint8Array(this.buffer.byteLength * 2);
+            newBuffer.set(this.buffer);
+
+            this.buffer = newBuffer;
+            this.view = new DataView(this.buffer.buffer);
         }
     }
 
-    private recursiveEncode(data: any, buffer: Uint8Array, offset: number)
+    private writeNil()
     {
-
+        this.ensureSufficientSpace(1);
+        this.view.setUint8(this.offset++, 0xc0);
     }
     
-    private static readonly textEncoder = new TextEncoder();
-    private static readonly bitmask = 255;
-
-    private static writeNil(buffer: Uint8Array, offset: number)
+    private writeBoolean(value: boolean)
     {
-        buffer[offset] = 0xc0;
+        this.ensureSufficientSpace(1);
+        this.view.setUint8(this.offset++, value ? 0xc3 : 0xc2);
     }
     
-    private static writeBoolean(data: boolean, buffer: Uint8Array, offset: number)
+    private writeFloat64(value: number)
     {
-        buffer[offset] = data ? 0xc3 : 0xc2;
+        this.ensureSufficientSpace(9);
+        this.view.setUint8(this.offset++, 0xcb);
+        this.view.setFloat64(this.offset, value);
+        this.offset += 8;
     }
     
-    private static writeFloat64(data: number, buffer: Uint8Array, offset: number)
+    private writeString(value: string)
     {
-        IEEE754.write(buffer, data, offset);
-    }
-    
-    private static writeString(data: string, buffer: Uint8Array, offset: number)
-    {
-        const utf8 = this.textEncoder.encode(data);
+        const utf8 = Encoder.textEncoder.encode(value);
 
         if (utf8.length < 32)
         {
-            buffer[offset] = 0xa0 | length;
-            buffer.set(utf8, offset + 1);
+            this.ensureSufficientSpace(1 + utf8.byteLength);
+            this.view.setUint8(this.offset++, 0xa0 | utf8.byteLength);
+            this.buffer.set(utf8, this.offset);
+            this.offset += utf8.byteLength;
         }
         else
         {
             try
             {
-                this.writeBinLike(utf8, buffer, offset, {
-                    _1byte: 0xd9,
-                    _2byte: 0xda,
-                    _4byte: 0xdb
-                });
+                this.writeBytes(utf8, 0xd9, 0xda, 0xdb);
             }
             catch
             {
@@ -110,159 +91,91 @@ export class Encoder
         }
     }
 
-    private static writeBinary(data: Uint8Array | ArrayBuffer, buffer: Uint8Array, offset: number)
+    private writeBinary(value: Uint8Array | ArrayBuffer)
     {
-        if (data instanceof ArrayBuffer)
-            data = new Uint8Array(data);
+        if (value instanceof ArrayBuffer)
+            value = new Uint8Array(value);
 
-        this.writeBinLike(data, buffer, offset, {
-            _1byte: 0xc4,
-            _2byte: 0xc5,
-            _4byte: 0xc6
-        });
+        this.writeBytes(value, 0xc4, 0xc5, 0xc6);
     }
 
-    private static writeBinLike(data: Uint8Array, buffer: Uint8Array, offset: number, identifiers: {
-        _1byte: number;
-        _2byte: number;
-        _4byte: number;
-    })
+    private writeBytes(
+        data: Uint8Array,
+        oneByteLenSeqIdentifier: number,
+        twoByteLenSeqIdentifier: number,
+        fourByteLenSeqIdentifier: number
+    )
     {
-        const length = data.length;
-
-        if (length < (1 << 8))
+        if (data.byteLength < (1 << 8))
         {
-            buffer[offset] = identifiers._1byte;
-            buffer[offset + 1] = length;
-            buffer.set(data, offset + 2);
+            this.ensureSufficientSpace(2 + data.byteLength);
+            this.view.setUint8(this.offset++, oneByteLenSeqIdentifier);
+            this.view.setUint8(this.offset++, data.byteLength);
         }
-        else if (length < (1 << 16))
+        else if (data.byteLength < (1 << 16))
         {
-            buffer[offset] = identifiers._2byte;
-            buffer[offset + 1] = length >> 8;
-            buffer[offset + 2] = length & this.bitmask;
-            buffer.set(data, offset + 3);
+            this.ensureSufficientSpace(3 + data.byteLength);
+            this.view.setUint8(this.offset++, twoByteLenSeqIdentifier);
+            this.view.setUint16(this.offset, data.byteLength);
+            this.offset += 2;
         }
         else if (length < (1 << 32))
         {
-            buffer[offset] = identifiers._4byte;
-            buffer[offset + 1] = length >> 24;
-            buffer[offset + 2] = length & (this.bitmask << 16);
-            buffer[offset + 3] = length & (this.bitmask << 8);
-            buffer[offset + 4] = length & this.bitmask;
-            buffer.set(data, offset + 5);
+            this.ensureSufficientSpace(5 + data.byteLength);
+            this.view.setUint8(this.offset++, fourByteLenSeqIdentifier);
+            this.view.setUint32(this.offset, data.byteLength)
+            this.offset += 4;
         }
         else throw new Error("buffer too long to encode (more than 2^32 - 1 bytes)");
+
+        this.buffer.set(data, this.offset);
+        this.offset += data.byteLength;
     }
 
-    /**
-     * DOES NOT encode array elements. Only encodes that the following n items are
-     * in an array. Excludes `undefined` elements.
-     */
-    private static writeArray(data: any[], buffer: Uint8Array, offset: number)
+    private writeArrayPrefix(length: number)
     {
-        let length = 0;
-        data.forEach(elem => {
-            if (elem !== undefined) ++length;
-        });
-
         if (length < 16)
         {
-            buffer[offset] = 0x90 | length;
+            this.ensureSufficientSpace(1);
+            this.view.setUint8(this.offset++, 0x90 | length);
         }
         else if (length < (1 << 16))
         {
-            buffer[offset] = 0xdc;
-            buffer[offset + 1] = length >> 8;
-            buffer[offset + 2] = length & this.bitmask;
+            this.ensureSufficientSpace(3);
+            this.view.setUint8(this.offset++, 0xdc);
+            this.view.setUint16(this.offset, length);
+            this.offset += 2;
         }
         else // ECMA dictates that array length will never exceed a uint32
         {
-            buffer[offset] = 0xdd;
-            buffer[offset + 1] = length >> 24;
-            buffer[offset + 2] = length & (this.bitmask << 16);
-            buffer[offset + 3] = length & (this.bitmask << 8);
-            buffer[offset + 4] = length & this.bitmask;
+            this.ensureSufficientSpace(5);
+            this.view.setUint8(this.offset++, 0xdd);
+            this.view.setUint32(this.offset, length);
+            this.offset += 4;
         }
     }
 
-    /**
-     * DOES NOT encode map elements. Only encodes that the following n key-value pairs are
-     * in a map. Excludes `undefined` values.
-     */
-    private static writeMap(data: object | Map<any, any>, buffer: Uint8Array, offset: number)
+    private writeMapPrefix(keyCount: number)
     {
-        let numValues = 0;
-        if (data instanceof Map)
+        if (keyCount < 16)
         {
-            data.forEach(value => {
-                if (value !== undefined) ++numValues;
-            });
+            this.ensureSufficientSpace(1);
+            this.view.setUint8(this.offset++, 0x80 | keyCount);
         }
-        else
+        else if (keyCount < (1 << 16))
         {
-            Object.values(data).forEach(value => {
-                if (value !== undefined) ++numValues;
-            });
+            this.ensureSufficientSpace(3);
+            this.view.setUint8(this.offset++, 0xde);
+            this.view.setUint16(this.offset, keyCount);
+            this.offset += 2;
         }
-
-        if (numValues < 16)
+        else if (keyCount < (1 << 32))
         {
-            buffer[offset] = 0x80 | numValues;
-        }
-        else if (numValues < (1 << 16))
-        {
-            buffer[offset] = 0xde;
-            buffer[offset + 1] = numValues >> 8;
-            buffer[offset + 2] = numValues & this.bitmask;
-        }
-        else if (numValues < (1 << 32))
-        {
-            buffer[offset] = 0xdf;
-            buffer[offset + 1] = numValues >> 24;
-            buffer[offset + 2] = numValues & (this.bitmask << 16);
-            buffer[offset + 3] = numValues & (this.bitmask << 8);
-            buffer[offset + 4] = numValues & this.bitmask;
+            this.ensureSufficientSpace(5);
+            this.view.setUint8(this.offset++, 0xdf);
+            this.view.setUint32(this.offset, keyCount);
+            this.offset += 4;
         }
         else throw new Error("map too large to encode (more than 2^32 - 1 defined values)");
     }
-}
-
-/**
- * Computes the total [encoded] length of a binary buffer, given the length
- * of the buffer, in bytes.
- */
-function binLen(size: number): number
-{
-    if (size < (1 << 8))
-        return 2 + size;
-    if (size < (1 << 16))
-        return 3 + size;
-    return 5 + size;
-}
-
-/**
- * Computes the length needed to encode an array PREFIX, given the number of
- * elements. The length does not include the size of encoded elements.
- */
-function arrLen(elementCount: number): number
-{
-    if (elementCount < 16)
-        return 1;
-    if (elementCount < (1 << 16))
-        return 3;
-    return 5;
-}
-
-/**
- * Computes the length needed to encode a map PREFIX, given the number of keys
- * in the map. The length does not include the size of encoded keys/elements.
- */
-function mapLen(keyCount: number): number
-{
-    if (keyCount < 16)
-        return 1;
-    if (keyCount < (1 << 16))
-        return 3;
-    return 5;
 }
