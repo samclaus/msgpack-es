@@ -10,7 +10,8 @@ The following are on my list, in order of priority.
 
 - [ ] Working encoder
 - [ ] Working decoder
-- [ ] Write my own IEEE-754 encode/decode because the library I use has a sketchy license
+- [ ] ~~Write my own IEEE-754 encode/decode because the library I use has a sketchy license~~
+- [X] Use DataView to write float64s and other number types
 - [ ] Add configuration options and refine API
   - Behavior for undefined values in maps (currently omitted when encoding)
   - Decode maps to objects or ES6 Maps (currently decoded to objects)
