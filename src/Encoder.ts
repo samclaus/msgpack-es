@@ -117,10 +117,62 @@ export class Encoder
     
     private writeNumber(value: number)
     {
-        this.ensureSufficientSpace(9);
-        this.view.setUint8(this.offset++, 0xcb);
-        this.view.setFloat64(this.offset, value);
-        this.offset += 8;
+        if (Number.isSafeInteger(value))
+        {
+            if (value >= 0)
+            {
+                if (value < (1 << 7))
+                {
+                    this.ensureSufficientSpace(1);
+                    this.view.setUint8(this.offset++, value);
+                }
+                else if (value < (1 << 8))
+                {
+                    this.ensureSufficientSpace(2);
+                    this.view.setUint8(this.offset++, 0xcc);
+                    this.view.setUint8(this.offset++, value);
+                }
+                else if (value < (1 << 16))
+                {
+                    this.ensureSufficientSpace(3);
+                    this.view.setUint8(this.offset++, 0xcd);
+                    this.view.setUint16(this.offset, value);
+                    this.offset += 2;
+                }
+                else if (value < (1 << 32))
+                {
+                    this.ensureSufficientSpace(5);
+                    this.view.setUint8(this.offset++, 0xce);
+                    this.view.setUint32(this.offset, value);
+                    this.offset += 4;
+                }
+                else // uint64; cannot use bitwise operators (casts to uint32)
+                {
+                    this.ensureSufficientSpace(9);
+                    this.view.setUint8(this.offset++, 0xcf);
+                    this.view.setUint32(this.offset, value / (1 << 32));
+                    this.offset += 4;
+                    this.view.setUint32(this.offset, value);
+                    this.offset += 4;
+                }
+            }
+            else
+            {
+                if (value >= -32)
+                {
+                    this.ensureSufficientSpace(1);
+                    this.view.setInt8(this.offset++, value);
+                }
+                else throw new Error("does not support signed integers below -32 yet");
+            }
+        }
+        else // TODO: check if it can fit in a float32
+        {
+            this.ensureSufficientSpace(9);
+            this.view.setUint8(this.offset++, 0xcb);
+            this.view.setFloat64(this.offset, value);
+            this.offset += 8;
+        }
     }
     
     private writeString(value: string)

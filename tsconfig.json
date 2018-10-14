@@ -9,9 +9,9 @@
             "es2015",
             "dom"
         ],
-        "module": "ESNext",
+        "module": "System",
         "declaration": true,
-        "outDir": "dist"
+        "outFile": "dist/index.js"
     },
     "files": [
         "src/index.ts"
