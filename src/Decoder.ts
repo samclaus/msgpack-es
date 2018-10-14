@@ -31,7 +31,8 @@ export class Decoder
     invalidUTFBehavior: "throw" | "raw" = "throw";
 
     /**
-     * Determines whether 
+     * If true, msgpack maps will be decoded as ES6 Map objects. Otherwise, they will be
+     * decoded as plain objects.
      */
     useES6Maps = false;
 
@@ -86,43 +87,16 @@ export class Decoder
             case 0xc6: return this.takeBuffer(this.takeUint32());
 
             // Arrays
-            case 0xdc: {
-                const array = new Array(this.takeUint16());
-
-                for (let i = 0; i < array.length; ++i)
-                    array[i] = this.readValue();
-                
-                return array;
-            }
-            case 0xdd: {
-                const array = new Array(this.takeUint32());
-
-                for (let i = 0; i < array.length; ++i)
-                    array[i] = this.readValue();
-                
-                return array;
-            }
+            case 0xdc: return this.takeArray(this.takeUint16());
+            case 0xdd: return this.takeArray(this.takeUint32());
 
             // Maps
-            case 0xde: {
-                const keyCount = this.takeUint16();
-                const map = {};
-
-                for (let i = 0; i < keyCount; ++i)
-                    map[this.readValue()] = this.readValue();
-
-                return map;
-            }
-            case 0xdf: {
-                const keyCount = this.takeUint32();
-                const map = {};
-
-                for 
-            }
+            case 0xde: return this.takeMap(this.takeUint16());
+            case 0xdf: return this.takeMap(this.takeUint32());
         }
 
-        // Now detect fixed types (positive fixnum, fixstr, etc.)
-
+        if ((seqID & (1 << 7)) === 0) // positive fixnum
+            return seqID
     }
 
     takeUint8(): number {
@@ -212,11 +186,23 @@ export class Decoder
 
     takeMap(keyCount: number): object | Map<any, any>
     {
-        let map = {};
+        if (this.useES6Maps)
+        {
+            const map = new Map();
 
-        for (let i = 0; i < keyCount; ++i)
+            for (let i = 0; i < keyCount; ++i)
+                map.set(this.readValue(), this.readValue());
 
+            return map;
+        }
+        else
+        {
+            const map = {};
 
-        return map;
+            for (let i = 0; i < keyCount; ++i)
+                map[this.readValue()] = this.readValue();
+
+            return map;
+        }
     }
 }
