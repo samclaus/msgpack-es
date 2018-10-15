@@ -163,7 +163,33 @@ export class Encoder
                     this.ensureSufficientSpace(1);
                     this.view.setInt8(this.offset++, value);
                 }
-                else throw new Error("does not support signed integers below -32 yet");
+                else if (value >= -(1 << 8))
+                {
+                    this.ensureSufficientSpace(2);
+                    this.view.setUint8(this.offset++, 0xd0);
+                    this.view.setInt8(this.offset++, value);
+                }
+                else if (value >= -(1 << 16))
+                {
+                    this.ensureSufficientSpace(3);
+                    this.view.setUint8(this.offset++, 0xd1);
+                    this.view.setInt16(this.offset, value);
+                    this.offset += 2;
+                }
+                else if (value >= -(1 << 32))
+                {
+                    this.ensureSufficientSpace(5);
+                    this.view.setUint8(this.offset++, 0xd2);
+                    this.view.setInt32(this.offset, value);
+                    this.offset += 4;
+                }
+                else // TODO: figure out how to encode int64
+                {
+                    this.ensureSufficientSpace(9);
+                    this.view.setUint8(this.offset++, 0xcb);
+                    this.view.setFloat64(this.offset, value);
+                    this.offset += 8;
+                }
             }
         }
         else // TODO: check if it can fit in a float32
