@@ -96,7 +96,8 @@ export class Decoder
         }
 
         if ((seqID & (1 << 7)) === 0) // positive fixnum
-            return seqID
+            return seqID;
+        throw Error("msgpack-ts: Decoder encountered fixed type that is not yet implemented");
     }
 
     takeUint8(): number {

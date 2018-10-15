@@ -97,10 +97,77 @@ System.register("Encoder", [], function (exports_1, context_1) {
                     this.view.setUint8(this.offset++, value ? 0xc3 : 0xc2);
                 }
                 writeNumber(value) {
-                    this.ensureSufficientSpace(9);
-                    this.view.setUint8(this.offset++, 0xcb);
-                    this.view.setFloat64(this.offset, value);
-                    this.offset += 8;
+                    if (Number.isSafeInteger(value)) {
+                        if (value >= 0) {
+                            if (value < (1 << 7)) {
+                                this.ensureSufficientSpace(1);
+                                this.view.setUint8(this.offset++, value);
+                            }
+                            else if (value < (1 << 8)) {
+                                this.ensureSufficientSpace(2);
+                                this.view.setUint8(this.offset++, 0xcc);
+                                this.view.setUint8(this.offset++, value);
+                            }
+                            else if (value < (1 << 16)) {
+                                this.ensureSufficientSpace(3);
+                                this.view.setUint8(this.offset++, 0xcd);
+                                this.view.setUint16(this.offset, value);
+                                this.offset += 2;
+                            }
+                            else if (value < (1 << 32)) {
+                                this.ensureSufficientSpace(5);
+                                this.view.setUint8(this.offset++, 0xce);
+                                this.view.setUint32(this.offset, value);
+                                this.offset += 4;
+                            }
+                            else // uint64; cannot use bitwise operators (casts to uint32)
+                             {
+                                this.ensureSufficientSpace(9);
+                                this.view.setUint8(this.offset++, 0xcf);
+                                this.view.setUint32(this.offset, value / (1 << 32));
+                                this.offset += 4;
+                                this.view.setUint32(this.offset, value);
+                                this.offset += 4;
+                            }
+                        }
+                        else {
+                            if (value >= -32) {
+                                this.ensureSufficientSpace(1);
+                                this.view.setInt8(this.offset++, value);
+                            }
+                            else if (value >= -(1 << 8)) {
+                                this.ensureSufficientSpace(2);
+                                this.view.setUint8(this.offset++, 0xd0);
+                                this.view.setInt8(this.offset++, value);
+                            }
+                            else if (value >= -(1 << 16)) {
+                                this.ensureSufficientSpace(3);
+                                this.view.setUint8(this.offset++, 0xd1);
+                                this.view.setInt16(this.offset, value);
+                                this.offset += 2;
+                            }
+                            else if (value >= -(1 << 32)) {
+                                this.ensureSufficientSpace(5);
+                                this.view.setUint8(this.offset++, 0xd2);
+                                this.view.setInt32(this.offset, value);
+                                this.offset += 4;
+                            }
+                            else // TODO: figure out how to encode int64
+                             {
+                                this.ensureSufficientSpace(9);
+                                this.view.setUint8(this.offset++, 0xcb);
+                                this.view.setFloat64(this.offset, value);
+                                this.offset += 8;
+                            }
+                        }
+                    }
+                    else // TODO: check if it can fit in a float32
+                     {
+                        this.ensureSufficientSpace(9);
+                        this.view.setUint8(this.offset++, 0xcb);
+                        this.view.setFloat64(this.offset, value);
+                        this.offset += 8;
+                    }
                 }
                 writeString(value) {
                     const utf8 = Encoder.textEncoder.encode(value);
@@ -276,6 +343,7 @@ System.register("Decoder", [], function (exports_2, context_2) {
                     }
                     if ((seqID & (1 << 7)) === 0) // positive fixnum
                         return seqID;
+                    throw Error("msgpack-ts: Decoder encountered fixed type that is not yet implemented");
                 }
                 takeUint8() {
                     return this.view.getUint8(this.offset++);
@@ -369,6 +437,7 @@ System.register("Decoder", [], function (exports_2, context_2) {
 });
 System.register("index", ["Encoder", "Decoder"], function (exports_3, context_3) {
     "use strict";
+    var Encoder_1, Decoder_1;
     var __moduleName = context_3 && context_3.id;
     function exportStar_1(m) {
         var exports = {};
@@ -380,13 +449,19 @@ System.register("index", ["Encoder", "Decoder"], function (exports_3, context_3)
     return {
         setters: [
             function (Encoder_1_1) {
+                Encoder_1 = Encoder_1_1;
                 exportStar_1(Encoder_1_1);
             },
             function (Decoder_1_1) {
+                Decoder_1 = Decoder_1_1;
                 exportStar_1(Decoder_1_1);
             }
         ],
         execute: function () {
+            window["msgpack"] = {
+                Encoder: Encoder_1.Encoder,
+                Decoder: Decoder_1.Decoder
+            };
         }
     };
 });
