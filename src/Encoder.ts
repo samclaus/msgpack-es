@@ -10,10 +10,10 @@ export class Encoder
     private static readonly textEncoder = new TextEncoder();
 
     /**
-     * The starting buffer size when encoding an object, in KiB. The buffer will
-     * then be grown by factors of 2 as needed. Will be configurable in the future.
+     * The starting buffer size when encoding an object, in bytes. The buffer will
+     * then be grown by factors of 2 as needed.
      */
-    private readonly initialBufferSize = 4;
+    initialBufferSize = 4096;
 
     /**
      * Buffer is a Uint8Array "view" on top of the underlying data buffer. It compliments
@@ -32,9 +32,17 @@ export class Encoder
      */
     private offset: number;
 
-    encode(data: any): Uint8Array
+    /**
+     * Encode a value to the MsgPack binary format. The returned Uint8Array will be a slice of
+     * the larger underlying ArrayBuffer used for encoding, so you will need to call slice() on
+     * it and grab the ArrayBuffer of the result if you need the result as a raw ArrayBuffer.
+     * 
+     * @param data              The data to encode.
+     * @param initialBufferSize Optional override for this.initialBufferSize.
+     */
+    encode(data: any, initialBufferSize = this.initialBufferSize): Uint8Array
     {
-        this.buffer = new Uint8Array(this.initialBufferSize * 1024);
+        this.buffer = new Uint8Array(initialBufferSize);
         this.view = new DataView(this.buffer.buffer);
         this.offset = 0;
         this.recursiveEncode(data);
@@ -241,10 +249,7 @@ export class Encoder
 
     private writeBinary(value: Uint8Array | ArrayBuffer)
     {
-        if (value instanceof ArrayBuffer)
-            value = new Uint8Array(value);
-
-        this.writeBytes(value, 0xc4, 0xc5, 0xc6);
+        this.writeBytes(value instanceof ArrayBuffer ? new Uint8Array(value) : value, 0xc4, 0xc5, 0xc6);
     }
 
     private writeBytes(

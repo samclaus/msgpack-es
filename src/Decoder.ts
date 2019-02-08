@@ -6,33 +6,44 @@
  */
 export class Decoder
 {
+    /**
+     * Global Decoder instance, purely for convenience because most applications will
+     * likely use the same decoding rules for all situations.
+     */
+    static readonly global = new Decoder();
+
     private static textDecoder = new TextDecoder("utf-8", { fatal: true });
 
     /**
-     * When reading msgpack string/binary objects from the data, determines if
-     * the data should be copied to new buffers, or simply returned as subviews
-     * of the buffer being decoded (better performance, but dangerous if you do
-     * stuff to the message data after decoding it).
+     * Shortcut to call `Decoder.global.decode()`.
      */
-    copyBuffers = false;
+    static decode<T>(data: ArrayBuffer | Uint8Array): T
+    {
+        return Decoder.global.decode<T>(data);
+    }
 
     /**
-     * Value to deserialize msgpack's nil as. Should be set to either null or undefined.
+     * Value to deserialize MsgPack's `Nil` type as. Should be set to either `null` or
+     * `undefined`; default is `null`.
      */
     nilValue: null | undefined = null;
 
     /**
-     * What to do when a msgpack string value is encountered but the binary data is not
-     * valid UTF-8. Can either throw an error or just return the raw binary data as a
-     * Uint8Array.
+     * Determines behavior when a `String` value is encountered whose data is not valid UTF-8.
+     * If true, deserializing the value will simply produce a raw Uint8Array containing the
+     * data. Otherwise, a TypeError will be thrown and decoding will fail (default).
      */
-    invalidUTFBehavior: "throw" | "raw" = "throw";
+    allowInvalidUTF8 = false;
 
     /**
-     * If true, msgpack maps will be decoded as ES6 Map objects. Otherwise, they will be
-     * decoded as plain objects.
+     * If true, MsgPack `Map` types will always be decoded as ES6 Map objects. Otherwise, the
+     * decoder will first attempt to decode each `Map` into a regular JS object, but will switch
+     * to an ES6 Map if it encounters a key whose decoded JS type is `"object"`. If a switch to
+     * an ES6 Map is performed, any key-value pairs that were already decoded will be abandoned
+     * in case some of the keys were converted to strings, like numbers or booleans, and can now
+     * be represented in their "true" form.
      */
-    useES6Maps = false;
+    alwaysUseES6Maps = false;
 
     private buffer: Uint8Array;
     private view: DataView;
@@ -145,7 +156,7 @@ export class Decoder
 
     takeInt64(): number
     {
-        throw new Error("msgpack-ts: JavaScript does not support 64-bit integers");
+        throw new TypeError("msgpack-ts: JavaScript does not support 64-bit integers");
     }
 
     takeFloat32(): number
@@ -164,12 +175,8 @@ export class Decoder
 
     takeBuffer(length: number): Uint8Array
     {
-        const end = this.offset + length;
-        const buffer = this.copyBuffers
-            ? this.buffer.slice(this.offset, end)
-            : this.buffer.subarray(this.offset, end);
-        this.offset += length;
-        return buffer;
+        // I might be pushing it with this one-liner (works in Chrome and FF)
+        return this.buffer.subarray(this.offset, this.offset += length);
     }
 
     takeString(length: number): string | Uint8Array
@@ -181,7 +188,7 @@ export class Decoder
         }
         catch (error)
         {
-            if (this.invalidUTFBehavior === "raw")
+            if (this.allowInvalidUTF8)
                 return utf8;
             else
                 throw error;
@@ -198,9 +205,9 @@ export class Decoder
         return array;
     }
 
-    takeMap(keyCount: number): object | Map<any, any>
+    takeMap(keyCount: number, useES6Map = this.alwaysUseES6Maps): object | Map<any, any>
     {
-        if (this.useES6Maps)
+        if (useES6Map)
         {
             const map = new Map();
 
@@ -209,14 +216,23 @@ export class Decoder
 
             return map;
         }
-        else
+
+        const mapStart = this.offset;
+        const map = {};
+
+        for (let i = 0; i < keyCount; ++i)
         {
-            const map = {};
+            const key = this.readValue();
 
-            for (let i = 0; i < keyCount; ++i)
-                map[this.readValue()] = this.readValue();
+            if (typeof key === "object" && key !== null)
+            {
+                this.offset = mapStart;
+                return this.takeMap(keyCount, true);
+            }
 
-            return map;
+            map[key] = this.readValue();
         }
+
+        return map;
     }
 }
