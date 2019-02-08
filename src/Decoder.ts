@@ -6,9 +6,7 @@
  */
 export class Decoder
 {
-    private static textDecoder = new TextDecoder("utf-8", {
-        fatal: true
-    });
+    private static textDecoder = new TextDecoder("utf-8", { fatal: true });
 
     /**
      * When reading msgpack string/binary objects from the data, determines if
@@ -40,7 +38,8 @@ export class Decoder
     private view: DataView;
     private offset: number;
 
-    decode<T>(data: ArrayBuffer | Uint8Array): T {
+    decode<T>(data: ArrayBuffer | Uint8Array): T
+    {
         this.buffer = data instanceof Uint8Array ? data : new Uint8Array(data);
         this.view = new DataView(this.buffer.buffer, this.buffer.byteOffset);
         this.offset = 0;
@@ -48,7 +47,8 @@ export class Decoder
         return this.readValue();
     }
 
-    readValue(): any {
+    readValue(): any
+    {
         const seqID = this.takeUint8();
 
         // First handle types with a static identifier byte
@@ -100,68 +100,80 @@ export class Decoder
         throw Error("msgpack-ts: Decoder encountered fixed type that is not yet implemented");
     }
 
-    takeUint8(): number {
+    takeUint8(): number
+    {
         return this.view.getUint8(this.offset++);
     }
 
-    takeUint16(): number {
+    takeUint16(): number
+    {
         const value = this.view.getUint16(this.offset);
         this.offset += 2;
         return value;
     }
 
-    takeUint32(): number {
+    takeUint32(): number
+    {
         const value = this.view.getUint32(this.offset);
         this.offset += 4;
         return value;
     }
 
-    takeUint64(): number {
+    takeUint64(): number
+    {
         throw new Error("msgpack-ts: JavaScript does not support 64-bit integers");
     }
 
-    takeInt8(): number {
+    takeInt8(): number
+    {
         return this.view.getInt8(this.offset++);
     }
 
-    takeInt16(): number {
+    takeInt16(): number
+    {
         const value = this.view.getInt16(this.offset);
         this.offset += 2;
         return value;
     }
 
-    takeInt32(): number {
+    takeInt32(): number
+    {
         const value = this.view.getInt32(this.offset);
         this.offset += 4;
         return value;
     }
 
-    takeInt64(): number {
+    takeInt64(): number
+    {
         throw new Error("msgpack-ts: JavaScript does not support 64-bit integers");
     }
 
-    takeFloat32(): number {
+    takeFloat32(): number
+    {
         const value = this.view.getFloat32(this.offset);
         this.offset += 4;
         return value;
     }
 
-    takeFloat64(): number {
+    takeFloat64(): number
+    {
         const value = this.view.getFloat64(this.offset);
         this.offset += 8;
         return value;
     }
 
-    takeBuffer(length: number): Uint8Array {
+    takeBuffer(length: number): Uint8Array
+    {
         const end = this.offset + length;
-        const buffer = this.copyBuffers ?
-            this.buffer.slice(this.offset, end) :
-            this.buffer.subarray(this.offset, end);
+        const buffer = this.copyBuffers
+            ? this.buffer.slice(this.offset, end)
+            : this.buffer.subarray(this.offset, end);
         this.offset += length;
         return buffer;
     }
 
-    takeString(length: number): string | Uint8Array {
+    takeString(length: number): string | Uint8Array
+    {
         const utf8 = this.takeBuffer(length);
         try
         {
@@ -176,7 +188,8 @@ export class Decoder
         }
     }
 
-    takeArray(length: number): any[] {
+    takeArray(length: number): any[]
+    {
         let array = new Array(length);
 
         for (let i = 0; i < array.length; ++i)

@@ -15,8 +15,21 @@ export class Encoder
      */
     private readonly initialBufferSize = 4;
 
+    /**
+     * Buffer is a Uint8Array "view" on top of the underlying data buffer. It compliments
+     * this.view, because Uint8Array and DataView support different operations.
+     */
     private buffer: Uint8Array;
+
+    /**
+     * View is a DataView "view" on top of the underlying data buffer. It compliments
+     * this.buffer, because Uint8Array and DataView support different operations.
+     */
     private view: DataView;
+
+    /**
+     * Offset is the current location in the buffer we are encoding to.
+     */
     private offset: number;
 
     encode(data: any): Uint8Array
