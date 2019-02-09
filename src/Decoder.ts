@@ -1,4 +1,6 @@
-const enum MsgPack {
+
+const enum MsgPack
+{
     PosFixInt,
     FixMap,
     FixArray,
@@ -40,7 +42,8 @@ const enum MsgPack {
 
 type ExtDecoderFn = (data: Uint8Array) => any;
 
-const identifierToType: Uint8Array = function(){
+const identifierToType: Uint8Array = function()
+{
     const arr = new Uint8Array(256);
 
     for (let i = 0x00; i <= 0x7f; ++i)
