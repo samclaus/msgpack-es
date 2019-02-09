@@ -116,6 +116,41 @@ export class Decoder
     }
 
     /**
+     * Implementation for the standard Timestamp extension type.
+     */
+    private static decodeDate(data: Uint8Array): Date
+    {
+        const view = new DataView(data.buffer, data.byteOffset, data.length);
+
+        switch (data.length)
+        {
+            case 4:
+            {
+                return new Date(view.getUint32(0) * 1000);
+            }
+            case 8:
+            {
+                const first32Bits = view.getUint32(0);
+                const nano = first32Bits >>> 2;
+                const sec = ((first32Bits & 0x3) * 2^32) + view.getUint32(4);
+
+                return new Date((sec * 1000) + (nano / 1e6));
+            }
+            case 12:
+            {
+                const nano = view.getUint32(0);
+                const sec = (view.getUint32(4) * 2^32) + view.getUint32(8);
+                const ms = (sec * 1000) + (nano / 1e6);
+
+                if (!Number.isSafeInteger(ms))
+                    throw new RangeError("msgpack: decodeDate (ext -1): timestamp exceeds safe JS integer range");
+            }
+            default:
+                throw new RangeError(`msgpack: decodeDate (ext -1): invalid data length (${data.length})`);
+        }
+    }
+
+    /**
      * Register extension types in this map. Negative identifiers are reserved.
      */
     readonly extensions = new Map<number, ExtDecoderFn>();
@@ -141,6 +176,22 @@ export class Decoder
     private buffer: Uint8Array;
     private view: DataView;
     private offset: number;
+
+    /**
+     * Create a new Decoder with the same configuration and extension decoders.
+     */
+    clone(): Decoder
+    {
+        const d = new Decoder();
+
+        d.nilValue = this.nilValue;
+        d.allowInvalidUTF8 = this.allowInvalidUTF8;
+        d.mapBehavior = this.mapBehavior;
+
+        this.extensions.forEach((fn, type) => d.extensions.set(type, fn));
+
+        return d;
+    }
 
     decode<T>(data: ArrayBuffer | Uint8Array): T
     {
@@ -356,6 +407,11 @@ export class Decoder
             throw new RangeError(`msgpack: decode: unrecognized ext type (${type})`);
 
         return this.extensions.get(type)(this.takeBinary(dataLength));
+    }
+
+    constructor()
+    {
+        this.extensions.set(-1, Decoder.decodeDate);
     }
 }
 
