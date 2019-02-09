@@ -171,11 +171,6 @@ export class Decoder
     }
 
     /**
-     * Register extension types in this map. Negative identifiers are reserved.
-     */
-    readonly extensions = new Map<number, ExtDecoderFn>();
-
-    /**
      * Value to deserialize MsgPack's `Nil` type as. Should be set to either `null` or
      * `undefined`; default is `null`.
      */
@@ -199,6 +194,11 @@ export class Decoder
      * Determines how MsgPack maps are decoded.
      */
     mapBehavior = Decoder.MapBehavior.PreferJSON;
+
+    /**
+     * Register extension types in this map. Negative identifiers are reserved.
+     */
+    private readonly extensions = new Map<number, ExtDecoderFn>();
 
     /**
      * Buffer is a Uint8Array "view" on top of the buffer being decoded. It compliments
@@ -228,7 +228,7 @@ export class Decoder
         d.allowInvalidUTF8 = this.allowInvalidUTF8;
         d.mapBehavior = this.mapBehavior;
 
-        this.extensions.forEach((fn, type) => d.extensions.set(type, fn));
+        this.extensions.forEach((fn, type) => d.registerExt(type, fn));
 
         return d;
     }
@@ -240,6 +240,14 @@ export class Decoder
         this.offset = 0;
 
         return this.nextObject();
+    }
+
+    registerExt(type: number, decoderFn: ExtDecoderFn)
+    {
+        if (type < 0)
+            throw new RangeError("msgpack: negative ext types are reserved");
+
+        this.extensions.set(type, decoderFn);
     }
 
     private nextObject(): any
