@@ -95,6 +95,26 @@ const identifierToType: Uint8Array = function()
 }()
 
 /**
+ * UnknownExtSeq describes an unrecognized extension sequence that
+ * was encountered during decoding and passed through opaquely.
+ */
+export class UnknownExtSeq
+{
+    constructor
+    (
+        /**
+         * Extension type identifier.
+         */
+        readonly type: number,
+
+        /**
+         * Extension sequence data.
+         */
+        readonly data: Uint8Array
+    ) {}
+}
+
+/**
  * Class for decoding maps (objects), arrays, buffers, and primitives from MsgPack format.
  */
 export class Decoder
@@ -167,6 +187,13 @@ export class Decoder
      * data. Otherwise, a TypeError will be thrown and decoding will fail (default).
      */
     allowInvalidUTF8 = false;
+
+    /**
+     * If false (default), any attempt to decode an unregistered extension type will raise an
+     * error. If true, unrecognized extension types will be passed through as UnknownExtSeq
+     * objects.
+     */
+    allowUnknownExts = false;
 
     /**
      * Determines how MsgPack maps are decoded.
@@ -404,9 +431,12 @@ export class Decoder
         const type = this.takeInt8();
 
         if (this.extensions.has(type))
-            throw new RangeError(`msgpack: decode: unrecognized ext type (${type})`);
-
-        return this.extensions.get(type)(this.takeBinary(dataLength));
+            return this.extensions.get(type)(this.takeBinary(dataLength));
+        
+        if (this.allowUnknownExts)
+            return new UnknownExtSeq(type, this.takeBinary(dataLength));
+        
+        throw new RangeError(`msgpack: decode: unrecognized ext type (${type})`);
     }
 
     constructor()
