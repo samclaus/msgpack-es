@@ -175,8 +175,15 @@ export class Decoder
 
     takeBuffer(length: number): Uint8Array
     {
-        // I might be pushing it with this one-liner (works in Chrome and FF)
-        return this.buffer.subarray(this.offset, this.offset += length);
+        /**
+         * TODO: Need to check if spec guarantees arguments to be evaluated
+         * left-to-right so we can condense this to:
+         * 
+         * return this.buffer.subarray(this.offset, this.offset += length);
+         */
+        const start = this.offset;
+        this.offset += length;
+        return this.buffer.subarray(start, this.offset);
     }
 
     takeString(length: number): string | Uint8Array
