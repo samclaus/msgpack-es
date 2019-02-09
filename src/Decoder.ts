@@ -95,10 +95,7 @@ const identifierToType: Uint8Array = function()
 }()
 
 /**
- * Class for decoding arrays, objects, and primitives to msgpack
- * format. You can create indepently configured instances, but you will
- * most likely want to simply use the static methods and interfact with
- * the default/global Encoder.
+ * Class for decoding maps (objects), arrays, buffers, and primitives from MsgPack format.
  */
 export class Decoder
 {
@@ -137,12 +134,7 @@ export class Decoder
     allowInvalidUTF8 = false;
 
     /**
-     * If true, MsgPack `Map` types will always be decoded as ES6 Map objects. Otherwise, the
-     * decoder will first attempt to decode each `Map` into a regular JS object, but will switch
-     * to an ES6 Map if it encounters a key whose decoded JS type is `"object"`. If a switch to
-     * an ES6 Map is performed, any key-value pairs that were already decoded will be abandoned
-     * in case some of the keys were converted to strings, like numbers or booleans, and can now
-     * be represented in their "true" form.
+     * Determines how MsgPack maps are decoded.
      */
     mapBehavior = Decoder.MapBehavior.PreferJSON;
 
@@ -227,7 +219,7 @@ export class Decoder
 
     private takeUint64(): number
     {
-        throw new Error("msgpack-ts: JavaScript does not support 64-bit integers");
+        throw new Error("msgpack: JavaScript does not support 64-bit integers");
     }
 
     private takeInt8(): number
@@ -251,7 +243,7 @@ export class Decoder
 
     private takeInt64(): number
     {
-        throw new TypeError("msgpack-ts: JavaScript does not support 64-bit integers");
+        throw new TypeError("msgpack: JavaScript does not support 64-bit integers");
     }
 
     private takeFloat32(): number
