@@ -152,14 +152,14 @@ export class Decoder
             {
                 const first32Bits = view.getUint32(0);
                 const nano = first32Bits >>> 2;
-                const sec = ((first32Bits & 0x3) * 2^32) + view.getUint32(4);
+                const sec = ((first32Bits & 0x3) * Math.pow(2, 32)) + view.getUint32(4);
 
                 return new Date((sec * 1000) + (nano / 1e6));
             }
             case 12:
             {
                 const nano = view.getUint32(0);
-                const sec = (view.getUint32(4) * 2^32) + view.getUint32(8);
+                const sec = (view.getUint32(4) * Math.pow(2, 32)) + view.getUint32(8);
                 const ms = (sec * 1000) + (nano / 1e6);
 
                 if (!Number.isSafeInteger(ms))
