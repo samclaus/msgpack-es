@@ -196,7 +196,7 @@ export class Decoder
     mapBehavior = Decoder.MapBehavior.PreferJSON;
 
     /**
-     * Register extension types in this map. Negative identifiers are reserved.
+     * Registered extension decoders.
      */
     private readonly extensions = new Map<number, ExtDecoderFn>();
 
@@ -242,11 +242,13 @@ export class Decoder
         return this.nextObject();
     }
 
+    /**
+     * Register an extension decoder. Negative extension types are reserved by the spec, but
+     * it is legal for you, the library user, to register decoders for such extensions in case
+     * this library has not been updated to provide one or it does not fit your use case.
+     */
     registerExt(type: number, decoderFn: ExtDecoderFn)
     {
-        if (type < 0)
-            throw new RangeError("msgpack: negative ext types are reserved");
-
         this.extensions.set(type, decoderFn);
     }
 
