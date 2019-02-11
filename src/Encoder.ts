@@ -1,4 +1,13 @@
 
+type Constructor<T> = new (...args: any[]) => T;
+
+type ExtEncoderFn<T> = (value: T) => Uint8Array;
+
+interface ExtEncoder<T> {
+    readonly type: number;
+    readonly fn:   ExtEncoderFn<T>;
+}
+
 /**
  * Class for encoding arrays, objects, and primitives to msgpack
  * format. You can create indepently configured instances, but you will
@@ -11,9 +20,28 @@ export class Encoder
 
     /**
      * The starting buffer size when encoding an object, in bytes. The buffer will
-     * then be grown by factors of 2 as needed.
+     * then be grown by factors of 2 as needed. Default is 128.
      */
-    initialBufferSize = 4096;
+    initialBufferSize = 128;
+
+    private static encodeDate(date: Date): Uint8Array
+    {
+        const ms = date.getTime();
+        const sec = Math.floor(ms / 1000);
+        const nano = (ms % 1000) * 1e6;
+        const buffer = new Uint32Array(2);
+
+        // 8 bytes - first 30 bits are nanoseconds, last 34 are seconds
+        buffer[0] = (nano << 2) | (sec / Math.pow(2, 32));
+        buffer[1]; // TODO: get last 32 bits of seconds (bitwise doesn't behave, gives 0 if number is greater than 2^32 - 1)
+
+        return new Uint8Array(buffer.buffer);
+    }
+
+    /**
+     * Registered extension decoders.
+     */
+    private readonly extensions = new Map<Constructor<any>, ExtEncoder<any>>();
 
     /**
      * Buffer is a Uint8Array "view" on top of the underlying data buffer. It compliments
@@ -50,12 +78,20 @@ export class Encoder
         return this.buffer.subarray(0, this.offset);
     }
 
+    /**
+     * Register an extension encoder. Negative extension types are reserved by the spec, but
+     * it is legal for you, the library user, to register encoders for such extensions in case
+     * this library has not been updated to provide one or it does not fit your use case.
+     */
+    registerExt<T>(constructor: Constructor<T>, type: number, encoderFn: ExtEncoderFn<T>)
+    {
+        this.extensions.set(constructor, { type: type, fn: encoderFn });
+    }
+
     private recursiveEncode = (data: any) =>
     {
         switch (typeof data)
         {
-            case "function":
-                throw new TypeError("cannot encode a function");
             case "undefined":
                 this.writeNil();
                 break;
@@ -242,7 +278,7 @@ export class Encoder
             catch
             {
                 // String specific error
-                throw new Error("string too long to encode (more than 2^32 - 1 UTF-8 characters)");
+                throw new RangeError("msgpack: string too long to encode (more than 2^32 - 1 UTF-8 runes)");
             }
         }
     }
@@ -279,7 +315,7 @@ export class Encoder
             this.view.setUint32(this.offset, data.byteLength)
             this.offset += 4;
         }
-        else throw new Error("buffer too long to encode (more than 2^32 - 1 bytes)");
+        else throw new RangeError("msgpack: buffer too long to encode (more than 2^32 - 1 bytes)");
 
         this.buffer.set(data, this.offset);
         this.offset += data.byteLength;
@@ -329,6 +365,11 @@ export class Encoder
             this.view.setUint32(this.offset, keyCount);
             this.offset += 4;
         }
-        else throw new Error("map too large to encode (more than 2^32 - 1 defined values)");
+        else throw new RangeError("msgpack: map too large to encode (more than 2^32 - 1 defined values)");
+    }
+
+    constructor()
+    {
+        this.registerExt(Date, -1, Encoder.encodeDate);
     }
 }
