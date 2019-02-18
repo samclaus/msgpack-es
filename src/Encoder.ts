@@ -109,6 +109,11 @@ export class Encoder
                 {
                     this.writeNil();
                 }
+                else if (this.extensions.has(data.constructor))
+                {
+                    const {type, fn} = this.extensions.get(data.constructor);
+                    this.writeExt(type, fn(data));
+                }
                 else if (data instanceof Uint8Array || data instanceof ArrayBuffer)
                 {
                     this.writeBinary(data);
@@ -118,7 +123,7 @@ export class Encoder
                     this.writeArrayPrefix(data.length);
                     data.forEach(this.recursiveEncode);
                 }
-                else if (data instanceof Map) // this is gonna need some work
+                else if (data instanceof Map)
                 {
                     const validKeys = Array.from(data.keys()).filter(key => {
                         const keyType = typeof key;
@@ -196,7 +201,7 @@ export class Encoder
                     this.view.setUint16(this.offset, value);
                     this.offset += 2;
                 }
-                else if (value < (1 << 32))
+                else if (value < Math.pow(2, 32))
                 {
                     this.ensureSufficientSpace(5);
                     this.view.setUint8(this.offset++, 0xce);
@@ -207,7 +212,7 @@ export class Encoder
                 {
                     this.ensureSufficientSpace(9);
                     this.view.setUint8(this.offset++, 0xcf);
-                    this.view.setUint32(this.offset, value / (1 << 32));
+                    this.view.setUint32(this.offset, value / Math.pow(2, 32));
                     this.offset += 4;
                     this.view.setUint32(this.offset, value);
                     this.offset += 4;
@@ -233,7 +238,7 @@ export class Encoder
                     this.view.setInt16(this.offset, value);
                     this.offset += 2;
                 }
-                else if (value >= -(1 << 32))
+                else if (value >= -Math.pow(2, 32))
                 {
                     this.ensureSufficientSpace(5);
                     this.view.setUint8(this.offset++, 0xd2);
@@ -249,7 +254,7 @@ export class Encoder
                 }
             }
         }
-        else // TODO: check if it can fit in a float32
+        else
         {
             this.ensureSufficientSpace(9);
             this.view.setUint8(this.offset++, 0xcb);
@@ -308,7 +313,7 @@ export class Encoder
             this.view.setUint16(this.offset, data.byteLength);
             this.offset += 2;
         }
-        else if (length < (1 << 32))
+        else if (length < Math.pow(2, 32))
         {
             this.ensureSufficientSpace(5 + data.byteLength);
             this.view.setUint8(this.offset++, fourByteLenSeqIdentifier);
@@ -358,7 +363,7 @@ export class Encoder
             this.view.setUint16(this.offset, keyCount);
             this.offset += 2;
         }
-        else if (keyCount < (1 << 32))
+        else if (keyCount < Math.pow(2, 32))
         {
             this.ensureSufficientSpace(5);
             this.view.setUint8(this.offset++, 0xdf);
@@ -366,6 +371,80 @@ export class Encoder
             this.offset += 4;
         }
         else throw new RangeError("msgpack: map too large to encode (more than 2^32 - 1 defined values)");
+    }
+
+    private writeExt(type: number, data: Uint8Array)
+    {
+        switch (data.length)
+        {
+            case 1:
+                this.ensureSufficientSpace(3);
+                this.buffer[this.offset++] = 0xd4;
+                this.buffer[this.offset++] = type;
+                this.buffer[this.offset++] = data[0];
+                break;
+            case 2:
+                this.ensureSufficientSpace(4);
+                this.buffer[this.offset++] = 0xd5;
+                this.buffer[this.offset++] = type;
+                this.buffer.set(data, this.offset);
+                this.offset += 2;
+                break;
+            case 4:
+                this.ensureSufficientSpace(6);
+                this.buffer[this.offset++] = 0xd6;
+                this.buffer[this.offset++] = type;
+                this.buffer.set(data, this.offset);
+                this.offset += 4;
+                break;
+            case 8:
+                this.ensureSufficientSpace(10);
+                this.buffer[this.offset++] = 0xd7;
+                this.buffer[this.offset++] = type;
+                this.buffer.set(data, this.offset);
+                this.offset += 8;
+                break;
+            case 16:
+                this.ensureSufficientSpace(6);
+                this.buffer[this.offset++] = 0xd8;
+                this.buffer[this.offset++] = type;
+                this.buffer.set(data, this.offset);
+                this.offset += 16;
+                break;
+            default:
+                if (data.length < (1 << 8))
+                {
+                    this.ensureSufficientSpace(3 + data.length);
+                    this.buffer[this.offset++] = 0xc7;
+                    this.buffer[this.offset++] = data.length;
+                    this.buffer[this.offset++] = type;
+                    this.buffer.set(data, this.offset);
+                    this.offset += data.length;
+                }
+                else if (data.length < (1 << 16))
+                {
+                    this.ensureSufficientSpace(4 + data.length);
+                    this.buffer[this.offset++] = 0xc8;
+                    this.view.setUint16(this.offset, data.length);
+                    this.offset += 2;
+                    this.buffer[this.offset++] = type;
+                    this.buffer.set(data, this.offset);
+                    this.offset += data.length;
+                }
+                else if (data.length < Math.pow(2, 32))
+                {
+                    this.ensureSufficientSpace(6 + data.length);
+                    this.buffer[this.offset++] = 0xc9;
+                    this.view.setUint32(this.offset, data.length);
+                    this.offset += 4;
+                    this.buffer[this.offset++] = type;
+                    this.buffer.set(data, this.offset);
+                    this.offset += data.length;
+                }
+                else throw new Error(
+                    `msgpack: ext (${type}) data too large to encode (length > 2^32 - 1)`
+                );
+        }
     }
 
     constructor()
