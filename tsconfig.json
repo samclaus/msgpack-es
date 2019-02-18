@@ -9,9 +9,9 @@
             "es2015",
             "dom"
         ],
-        "module": "System",
+        "module": "es6",
         "declaration": true,
-        "outFile": "dist/index.js"
+        "outDir": "lib"
     },
     "files": [
         "src/index.ts"
