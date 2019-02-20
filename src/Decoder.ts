@@ -95,26 +95,6 @@ const identifierToType: Uint8Array = function()
 }()
 
 /**
- * UnknownExtSeq describes an unrecognized extension sequence that
- * was encountered during decoding and passed through opaquely.
- */
-export class UnknownExtSeq
-{
-    constructor
-    (
-        /**
-         * Extension type identifier.
-         */
-        readonly type: number,
-
-        /**
-         * Extension sequence data.
-         */
-        readonly data: Uint8Array
-    ) {}
-}
-
-/**
  * Class for decoding maps (objects), arrays, buffers, and primitives from MsgPack format.
  */
 export class Decoder
@@ -130,7 +110,7 @@ export class Decoder
     /**
      * Shortcut to call `Decoder.global.decode()`.
      */
-    static decode<T>(data: ArrayBuffer | Uint8Array): T
+    static decode<T = any>(data: ArrayBuffer | Uint8Array): T
     {
         return Decoder.global.decode<T>(data);
     }
@@ -387,7 +367,7 @@ export class Decoder
         catch (error)
         {
             if (this.allowInvalidUTF8)
-                return utf8;
+                return utf8.slice();
             else
                 throw error;
         }
@@ -441,7 +421,7 @@ export class Decoder
                         return this.takeMap(keyCount, Decoder.MapBehavior.AlwaysES6Map);
                     }
 
-                    map[this.nextObject()] = this.nextObject();
+                    map[key] = this.nextObject();
                 }
 
                 return map;
@@ -457,7 +437,10 @@ export class Decoder
             return this.extensions.get(type)(this.takeBinary(dataLength));
         
         if (this.allowUnknownExts)
-            return new UnknownExtSeq(type, this.takeBinary(dataLength));
+            return <Decoder.UnknownExt>{
+                type: type,
+                data: this.takeBinary(dataLength)
+            };
         
         throw new RangeError(`msgpack: decode: unrecognized ext type (${type})`);
     }
@@ -491,5 +474,22 @@ export namespace Decoder
          * Maps will always be decoded as ES6 Map objects.
          */
         AlwaysES6Map
+    }
+
+    /**
+     * UnknownExt describes an unrecognized extension sequence that
+     * was encountered during decoding and passed through opaquely.
+     */
+    export interface UnknownExt
+    {
+        /**
+         * Extension type identifier.
+         */
+        readonly type: number;
+    
+        /**
+         * Extension sequence data.
+         */
+        readonly data: Uint8Array;
     }
 }
