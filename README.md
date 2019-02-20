@@ -166,12 +166,12 @@ function main()
 
     If false, a `RangeError` will be thrown whenever an unrecognized extension type is encountered. If
     true, the extension data will be passed through opaquely as an
-    [`Decoder.UnknownExt`](#interface-decoder.unknownextseq).
+    [`Decoder.UnknownExt`](#interface-decoderunknownextseq).
 
 - `Decoder.mapBehavior = Decoder.MapBehavior.PreferJSON`
 
     Determines how MessagePack `map` values are decoded. See
-    [`Decoder.MapBehavior`](#enum-decoder.mapbehavior) for options.
+    [`Decoder.MapBehavior`](#enum-decodermapbehavior) for options.
 
 - `Decoder.decode<T = any>(data: ArrayBuffer | Uint8Array): T`
 
