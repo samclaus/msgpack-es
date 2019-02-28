@@ -165,7 +165,7 @@ function main()
 - `Decoder.allowUnknownExts = false`
 
     If false, a `RangeError` will be thrown whenever an unrecognized extension type is encountered. If
-    true, the extension data will be passed through opaquely as an
+    true, the extension data will be passed through opaquely as a
     [`Decoder.UnknownExt`](#interface-decoderunknownextseq).
 
 - `Decoder.mapBehavior = Decoder.MapBehavior.PreferJSON`
