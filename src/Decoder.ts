@@ -99,21 +99,7 @@ const identifierToType: Uint8Array = function()
  */
 export class Decoder
 {
-    /**
-     * Global Decoder instance, purely for convenience because most applications will
-     * likely use the same decoding rules for all situations.
-     */
-    static readonly global = new Decoder();
-
     private static textDecoder = new TextDecoder("utf-8", { fatal: true });
-
-    /**
-     * Shortcut to call `Decoder.global.decode()`.
-     */
-    static decode<T = any>(data: ArrayBuffer | Uint8Array): T
-    {
-        return Decoder.global.decode<T>(data);
-    }
 
     /**
      * Implementation for the standard Timestamp extension type.
@@ -213,15 +199,6 @@ export class Decoder
         return d;
     }
 
-    decode<T>(data: ArrayBuffer | Uint8Array): T
-    {
-        this.buffer = data instanceof Uint8Array ? data : new Uint8Array(data);
-        this.view = new DataView(this.buffer.buffer, this.buffer.byteOffset);
-        this.offset = 0;
-
-        return this.nextObject();
-    }
-
     /**
      * Register an extension decoder. Negative extension types are reserved by the spec, but
      * it is legal for you, the library user, to register decoders for such extensions in case
@@ -230,6 +207,20 @@ export class Decoder
     registerExt(type: number, decoderFn: ExtDecoderFn)
     {
         this.extensions.set(type, decoderFn);
+    }
+
+    /**
+     * Decode the first MsgPack value encountered.
+     * 
+     * @param data The buffer to decode from.
+     */
+    decode<T = any>(data: ArrayBuffer | Uint8Array): T
+    {
+        this.buffer = data instanceof Uint8Array ? data : new Uint8Array(data);
+        this.view = new DataView(this.buffer.buffer, this.buffer.byteOffset);
+        this.offset = 0;
+
+        return this.nextObject();
     }
 
     private nextObject(): any

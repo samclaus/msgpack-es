@@ -11,18 +11,12 @@ interface ExtEncoder<T> {
 /**
  * Class for encoding arrays, objects, and primitives to msgpack
  * format. You can create indepently configured instances, but you will
- * most likely want to simply use the static methods and interact with
- * the default/global Encoder.
+ * most likely want to configure the encode.encoder instance and simply
+ * use encode().
  */
 export class Encoder
 {
     private static readonly textEncoder = new TextEncoder();
-
-    /**
-     * The starting buffer size when encoding an object, in bytes. The buffer will
-     * then be grown by factors of 2 as needed. Default is 128.
-     */
-    initialBufferSize = 128;
 
     private static encodeDate(date: Date): Uint8Array
     {
@@ -61,31 +55,42 @@ export class Encoder
     private offset: number;
 
     /**
-     * Encode a value to the MsgPack binary format. The returned Uint8Array will be a slice of
-     * the larger underlying ArrayBuffer used for encoding, so you will need to call slice() on
-     * it and grab the ArrayBuffer of the result if you need the result as a raw ArrayBuffer.
-     * 
-     * @param data              The data to encode.
-     * @param initialBufferSize Optional override for this.initialBufferSize.
-     */
-    encode(data: any, initialBufferSize = this.initialBufferSize): Uint8Array
-    {
-        this.buffer = new Uint8Array(initialBufferSize);
-        this.view = new DataView(this.buffer.buffer);
-        this.offset = 0;
-        this.recursiveEncode(data);
-
-        return this.buffer.subarray(0, this.offset);
-    }
-
-    /**
      * Register an extension encoder. Negative extension types are reserved by the spec, but
      * it is legal for you, the library user, to register encoders for such extensions in case
      * this library has not been updated to provide one or it does not fit your use case.
      */
-    registerExt<T>(constructor: Constructor<T>, type: number, encoderFn: ExtEncoderFn<T>)
+    registerExt<T>(constructor: Constructor<T>, type: number, encoderFn: ExtEncoderFn<T>): void
     {
         this.extensions.set(constructor, { type: type, fn: encoderFn });
+    }
+
+    /**
+     * Release the current encoding buffer and allocate a new one.
+     * @param newSize Size, in bytes, to allocate for the new buffer.
+     */
+    resize(newSize: number): void
+    {
+        this.buffer = new Uint8Array(newSize);
+        this.view = new DataView(this.buffer.buffer);
+    }
+
+    /**
+     * Encode a value to the MsgPack binary format.
+     * 
+     * @param value   The data to encode.
+     * @param reserve If provided and greater than the size of the
+     *                current encoding buffer, a new buffer of this
+     *                size will be reserved.
+     */
+    encode(value: any, reserve?: number): Uint8Array
+    {
+        if (typeof reserve === "number" && reserve > this.buffer.length)
+            this.resize(reserve);
+
+        this.offset = 0;
+        this.recursiveEncode(value);
+
+        return this.buffer.slice(0, this.offset);
     }
 
     private recursiveEncode = (data: any) =>
@@ -155,9 +160,9 @@ export class Encoder
 
     private ensureSufficientSpace(bytesToEncode: number)
     {
-        if (this.offset + bytesToEncode > this.view.byteLength)
+        if (this.offset + bytesToEncode > this.buffer.length)
         {
-            const newBuffer = new Uint8Array(this.buffer.byteLength * 2);
+            const newBuffer = new Uint8Array(this.buffer.length * 2);
             newBuffer.set(this.buffer);
 
             this.buffer = newBuffer;
@@ -447,8 +452,13 @@ export class Encoder
         }
     }
 
-    constructor()
+    /**
+     * Construct a new Encoder.
+     * @param reserve Starting size, in bytes, for the encoding buffer.
+     */
+    constructor(reserve = 128)
     {
+        this.resize(reserve);
         this.registerExt(Date, -1, Encoder.encodeDate);
     }
 }
