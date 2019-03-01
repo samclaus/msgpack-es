@@ -7,6 +7,7 @@ possible.
 
 **TODO**
 
+- Add Closure-compiled browser distribution
 - Add thorough tests
 - Add benchmarks
 
@@ -26,7 +27,7 @@ decoded, likely keeping it in memory when it is not needed.
 For more information, read the [docs](#documentation).
 
 ```TypeScript
-import { Encoder, Decoder } from "msgpack-ts";
+import { encode, decode, Decoder } from "msgpack-ts";
 
 /**
  * Both x and y will be in range [0, 255].
@@ -69,14 +70,14 @@ function main()
         }
     };
 
-    Encoder.global.registerExt(Coordinate, 0, Coordinate.encode);
-    Decoder.global.registerExt(0, Coordinate.decode);
+    encode.encoder.registerExt(Coordinate, 0, Coordinate.encode);
+    decode.decoder.registerExt(0, Coordinate.decode);
 
-    // Static encode() uses the Encoder.global instance
-    const encoded = Encoder.encode(message);
+    // encode() uses the encode.encoder instance
+    const encoded = encode(message);
 
-    // Static decode() uses the Decoder.global instance
-    const decoded = Decoder.decode<SomeInterface>(encoded);
+    // decode() uses the decode.decoder instance
+    const decoded = decode<SomeInterface>(encoded);
 
     // Create separate instances if you need multiple configurations
     const myDecoder = new Decoder();
