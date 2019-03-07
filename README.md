@@ -52,7 +52,7 @@ class Coordinate
     constructor(
         readonly x: number,
         readonly y: number
-    ){}
+    ) {}
 }
 
 function main()
@@ -106,18 +106,20 @@ function main()
 
     Convenience function to call `Encoder.global.encode()`.
 
+**constructor**
+
+- `new Encoder(reserve = 128)`
+
+    Create a new `Encoder` instance. You may pass the number of bytes to
+    allocate immediately as an encoding buffer, or it will default to `128`.
+
 **instance**
 
-- `Encoder.initialBufferSize = 128`
+- `Encoder.encode(data: any, reserve?: number): Uint8Array`
 
-    The initial number of bytes to allocate when encoding; buffer
-    will be grown by factors of 2 as necessary.
-
-- `Encoder.encode(data: any, initBuffSize = this.initialBufferSize): Uint8Array`
-
-    Encode a JavaScript object or primitive to MessagePack format.
-    You may provide a second argument to override the initial buffer
-    size for the single encoding operation.
+    Encode a JavaScript object or primitive to MessagePack format. You may provide a second argument
+    to ensure that a certain number of bytes is allocated for the encoding buffer before encoding
+    begins.
 
 - `Encoder.registerExt<T>(ctor: new (...args: any[]) => T, type: number, encoderFn: (data: T) => Uint8Array)`
 
@@ -132,6 +134,10 @@ function main()
 
         JavaScript `Date` objects will be encoded using the standard `Timestamp` extension type, unless
         overriden.
+
+- `Encoder.resize(newSize: number)`
+
+    Release the current encoding buffer and allocate a new one of `newSize` bytes.
 
 - `Encoder.clone(): Encoder`
 
@@ -150,6 +156,12 @@ function main()
 - `Decoder.decode<T = any>(data: ArrayBuffer | Uint8Array): T`
 
     Convenience function to call `Decoder.global.decode()`.
+
+**constructor**
+
+- `new Decoder()`
+
+    Creates a new `Decoder` instance.
 
 **instance**
 
