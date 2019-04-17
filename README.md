@@ -26,6 +26,8 @@ decoded, likely keeping it in memory when it is not needed.
 
 For more information, read the [docs](#documentation).
 
+Install the library via NPM: `npm i --save-dev msgpack-ts`.
+
 ```TypeScript
 import { encode, decode, Decoder } from "msgpack-ts";
 
