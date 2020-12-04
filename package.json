@@ -1,6 +1,6 @@
 {
   "name": "msgpack-ts",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "High performance TypeScript/JavaScript MessagePack implementation",
   "main": "dist/index.js",
   "type": "module",
