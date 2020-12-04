@@ -95,46 +95,49 @@ const identifierToType: Uint8Array = function()
 }()
 
 /**
+ * Standard timestamp extension (-1 identifier) from MessagePack spec.
+ * 
+ * @see https://github.com/msgpack/msgpack/blob/master/spec.md#timestamp-extension-type
+ */
+function decodeTimestamp(data: Uint8Array): Date
+{
+    const view = new DataView(data.buffer, data.byteOffset, data.length);
+
+    switch (data.length)
+    {
+        case 4:
+        {
+            return new Date(view.getUint32(0) * 1000);
+        }
+        case 8:
+        {
+            const first32Bits = view.getUint32(0);
+            const nano = first32Bits >>> 2;
+            const sec = ((first32Bits & 0x3) * Math.pow(2, 32)) + view.getUint32(4);
+
+            return new Date((sec * 1000) + Math.floor(nano / 1e6));
+        }
+        case 12:
+        {
+            // TODO: not sure if this actually decodes the int64 seconds correctly
+            const nano = view.getUint32(0);
+            const sec = (view.getInt32(4) * Math.pow(2, 32)) + view.getUint32(8);
+            const ms = (sec * 1000) + Math.floor(nano / 1e6);
+
+            if (!Number.isSafeInteger(ms))
+                throw new RangeError("msgpack: decodeDate (ext -1): timestamp exceeds safe JS integer range");
+        }
+        default:
+            throw new RangeError(`msgpack: decodeDate (ext -1): invalid data length (${data.length})`);
+    }
+}
+
+/**
  * Class for decoding maps (objects), arrays, buffers, and primitives from MsgPack format.
  */
 export class Decoder
 {
     private static textDecoder = new TextDecoder("utf-8", { fatal: true });
-
-    /**
-     * Implementation for the standard Timestamp extension type.
-     */
-    private static decodeDate(data: Uint8Array): Date
-    {
-        const view = new DataView(data.buffer, data.byteOffset, data.length);
-
-        switch (data.length)
-        {
-            case 4:
-            {
-                return new Date(view.getUint32(0) * 1000);
-            }
-            case 8:
-            {
-                const first32Bits = view.getUint32(0);
-                const nano = first32Bits >>> 2;
-                const sec = ((first32Bits & 0x3) * Math.pow(2, 32)) + view.getUint32(4);
-
-                return new Date((sec * 1000) + Math.floor(nano / 1e6));
-            }
-            case 12:
-            {
-                const nano = view.getUint32(0);
-                const sec = (view.getUint32(4) * Math.pow(2, 32)) + view.getUint32(8);
-                const ms = (sec * 1000) + Math.floor(nano / 1e6);
-
-                if (!Number.isSafeInteger(ms))
-                    throw new RangeError("msgpack: decodeDate (ext -1): timestamp exceeds safe JS integer range");
-            }
-            default:
-                throw new RangeError(`msgpack: decodeDate (ext -1): invalid data length (${data.length})`);
-        }
-    }
 
     /**
      * Value to deserialize MsgPack's `Nil` type as. Should be set to either `null` or
@@ -438,7 +441,7 @@ export class Decoder
 
     constructor()
     {
-        this.extensions.set(-1, Decoder.decodeDate);
+        this.extensions.set(-1, decodeTimestamp);
     }
 }
 

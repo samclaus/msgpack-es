@@ -9,6 +9,72 @@ interface ExtEncoder<T> {
 }
 
 /**
+ * Standard timestamp extension (-1 identifier) from MessagePack spec.
+ * 
+ * @see https://github.com/msgpack/msgpack/blob/master/spec.md#timestamp-extension-type
+ */
+function encodeTimestamp(d: Date): Uint8Array {
+    const U32_CAP = 2 ** 32;
+    const ms = d.getTime();
+
+    // CAUTION: there is a distinction between floor and other methods of integer
+    // division (casting away decimal) when the milliseconds are negative, i.e.,
+    // the date is before the UNIX epoch. Only the 96-bit MessagePack format
+    // supports negative timestamps and even within that format, only seconds are
+    // signed. Say we want to represent -34.2 seconds; the intuitive way to
+    // break it up would be -34 seconds and -200 million nanoseconds. However,
+    // because nanoseconds are still not signed in the 96-bit format, we must floor
+    // -34.2 to -35 seconds and then use 800 million nanoseconds to raise the end
+    // value back up!
+    const s = Math.floor(ms / 1000);
+
+    // Proof that 'ns' is guaranteed to be positive:
+    //      1. s <= ms / 1000                   # definition of floor function
+    //      2. s * 1000 <= ms                   # algebra (multiply both sides by 1000)
+    //      3. 0 <= ms - (s * 1000)             # algebra (subtract s * 1000 from both sides)
+    //      4. 0 <= (ms - (s * 1000)) * 1e6     # algebra (multiply both sides by 1e6)
+    const ns = (ms - (s * 1000)) * 1e6;
+
+    // If timestamp is negative we must resort the 96-bit format
+    if (ms >= 0) {
+        if (ns === 0 && s < U32_CAP) {
+            // Only seconds and they fit in uint32 -> use 32-bit representation
+            const buff = new ArrayBuffer(4);
+            const view = new DataView(buff);
+
+            // 32 bits for seconds
+            view.setUint32(0, s);
+
+            return new Uint8Array(buff);
+        }
+        if (s < (2 ** 34)) {
+            // Seconds fit in uint34 -> use 64-bit representation
+            const buff = new ArrayBuffer(8);
+            const view = new DataView(buff);
+
+            // 30 bits for nanoseconds and upper 2 bits of seconds
+            view.setUint32(0, (ns << 2) + Math.floor(s / U32_CAP));
+
+            // Lower 32 bits of seconds
+            view.setUint32(4, s % U32_CAP);
+
+            return new Uint8Array(buff);
+        }
+    }
+
+    // 96-bit representation (worst case if numbers are big or negative)
+    const buff = new ArrayBuffer(12);
+    const view = new DataView(buff);
+
+    // TODO: not sure if this actually encodes int64 seconds correctly
+    view.setUint32(0, ns);
+    view.setInt32(4, Math.trunc(s / U32_CAP));
+    view.setUint32(8, s % U32_CAP);
+
+    return new Uint8Array(buff);
+}
+
+/**
  * Class for encoding arrays, objects, and primitives to msgpack
  * format. You can create indepently configured instances, but you will
  * most likely want to configure the encode.encoder instance and simply
@@ -17,20 +83,6 @@ interface ExtEncoder<T> {
 export class Encoder
 {
     private static readonly textEncoder = new TextEncoder();
-
-    private static encodeDate(date: Date): Uint8Array
-    {
-        const ms = date.getTime();
-        const sec = Math.floor(ms / 1000);
-        const nano = (ms % 1000) * 1e6;
-        const buffer = new Uint32Array(2);
-
-        // 8 bytes - first 30 bits are nanoseconds, last 34 are seconds
-        buffer[0] = (nano << 2) | (sec / Math.pow(2, 32));
-        buffer[1]; // TODO: get last 32 bits of seconds (bitwise doesn't behave, gives 0 if number is greater than 2^32 - 1)
-
-        return new Uint8Array(buffer.buffer);
-    }
 
     /**
      * Registered extension decoders.
@@ -160,9 +212,12 @@ export class Encoder
 
     private ensureSufficientSpace(bytesToEncode: number)
     {
-        if (this.offset + bytesToEncode > this.buffer.length)
+        const requiredSize = this.offset + bytesToEncode;
+
+        if (requiredSize > this.buffer.length)
         {
-            const newBuffer = new Uint8Array(this.buffer.length * 2);
+            const newLength = Math.max(this.buffer.length * 2, requiredSize);
+            const newBuffer = new Uint8Array(newLength);
             newBuffer.set(this.buffer);
 
             this.buffer = newBuffer;
@@ -459,6 +514,6 @@ export class Encoder
     constructor(reserve = 128)
     {
         this.resize(reserve);
-        this.registerExt(Date, -1, Encoder.encodeDate);
+        this.registerExt(Date, -1, encodeTimestamp);
     }
 }
