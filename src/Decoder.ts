@@ -173,18 +173,18 @@ export class Decoder
      * Buffer is a Uint8Array "view" on top of the buffer being decoded. It compliments
      * this.view, because Uint8Array and DataView support different operations.
      */
-    private buffer: Uint8Array;
+    private buffer!: Uint8Array;
 
     /**
      * View is a DataView "view" on top of the buffer being decoded. It compliments this.buffer,
      * because Uint8Array and DataView support different operations.
      */
-    private view: DataView;
+    private view!: DataView;
 
     /**
      * Offset is the current location in the buffer we are decoding.
      */
-    private offset: number;
+    private offset!: number;
 
     /**
      * Create a new Decoder with the same configuration and extension decoders.
@@ -383,7 +383,7 @@ export class Decoder
         {
             case Decoder.MapBehavior.AlwaysJSON:
             {
-                const map = {};
+                const map: {[key: string]: any} = {};
 
                 for (let i = 0; i < keyCount; ++i)
                     map[this.nextObject()] = this.nextObject();
@@ -403,7 +403,7 @@ export class Decoder
             default:
             {
                 const mapStart = this.offset;
-                const map = {};
+                const map: {[key: string]: any} = {};
 
                 for (let i = 0; i < keyCount; ++i)
                 {
@@ -428,7 +428,7 @@ export class Decoder
         const type = this.takeInt8();
 
         if (this.extensions.has(type))
-            return this.extensions.get(type)(this.takeBinary(dataLength));
+            return this.extensions.get(type)!(this.takeBinary(dataLength));
         
         if (this.allowUnknownExts)
             return <Decoder.UnknownExt>{

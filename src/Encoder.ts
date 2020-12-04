@@ -104,7 +104,7 @@ export class Encoder
     /**
      * Offset is the current location in the buffer we are encoding to.
      */
-    private offset: number;
+    private offset = 0;
 
     /**
      * Register an extension encoder. Negative extension types are reserved by the spec, but
@@ -168,7 +168,7 @@ export class Encoder
                 }
                 else if (this.extensions.has(data.constructor))
                 {
-                    const {type, fn} = this.extensions.get(data.constructor);
+                    const {type, fn} = this.extensions.get(data.constructor)!;
                     this.writeExt(type, fn(data));
                 }
                 else if (data instanceof Uint8Array || data instanceof ArrayBuffer)
@@ -441,7 +441,7 @@ export class Encoder
                 this.ensureSufficientSpace(3);
                 this.buffer[this.offset++] = 0xd4;
                 this.buffer[this.offset++] = type;
-                this.buffer[this.offset++] = data[0];
+                this.buffer[this.offset++] = data[0]!;
                 break;
             case 2:
                 this.ensureSufficientSpace(4);
@@ -513,7 +513,8 @@ export class Encoder
      */
     constructor(reserve = 128)
     {
-        this.resize(reserve);
+        this.buffer = new Uint8Array(reserve);
+        this.view = new DataView(this.buffer.buffer);
         this.registerExt(Date, -1, encodeTimestamp);
     }
 }
