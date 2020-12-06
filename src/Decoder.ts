@@ -292,9 +292,25 @@ export class Decoder
         return value;
     }
 
-    private takeUint64(): number
+    private takeUint64(): number | bigint
     {
-        throw new Error("msgpack: JavaScript does not support 64-bit integers");
+        const hi32 = this.view.getUint32(this.offset);
+
+        if (hi32 >= (1 << 21))
+        {
+            if (typeof BigInt === "function")
+            {
+                const value = this.view.getBigUint64(this.offset);
+                this.offset += 8;
+                return value;
+            }
+            throw new Error("msgpack: 64-bit unsigned integer exceeds max safe JS integer value");
+        }
+
+        this.offset += 4;
+        const value = hi32 * (2**32) + this.view.getUint32(this.offset);
+        this.offset += 4;
+        return value;
     }
 
     private takeInt8(): number
@@ -316,9 +332,18 @@ export class Decoder
         return value;
     }
 
-    private takeInt64(): number
+    private takeInt64(): number | bigint
     {
-        throw new TypeError("msgpack: JavaScript does not support 64-bit integers");
+        // TODO: inspect high 4 bytes and support numbers within safe range
+        // for regular JS number (-2^53, 2^53)
+        if (true) {
+            if (typeof BigInt === "function") {
+                const value = this.view.getBigInt64(this.offset);
+                this.offset += 8;
+                return value;
+            }
+        }
+        throw new TypeError("msgpack: 64-bit signed integer exceeds max safe JS integer value");
     }
 
     private takeFloat32(): number

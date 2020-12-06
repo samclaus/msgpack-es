@@ -158,6 +158,9 @@ export class Encoder
             case "number":
                 this.writeNumber(data);
                 break;
+            case "bigint":
+                this.writeBigInt(data);
+                break;
             case "string":
                 this.writeString(data);
                 break;
@@ -241,78 +244,7 @@ export class Encoder
     {
         if (Number.isSafeInteger(value))
         {
-            if (value >= 0)
-            {
-                if (value < (1 << 7))
-                {
-                    this.ensureSufficientSpace(1);
-                    this.view.setUint8(this.offset++, value);
-                }
-                else if (value < (1 << 8))
-                {
-                    this.ensureSufficientSpace(2);
-                    this.view.setUint8(this.offset++, 0xcc);
-                    this.view.setUint8(this.offset++, value);
-                }
-                else if (value < (1 << 16))
-                {
-                    this.ensureSufficientSpace(3);
-                    this.view.setUint8(this.offset++, 0xcd);
-                    this.view.setUint16(this.offset, value);
-                    this.offset += 2;
-                }
-                else if (value < Math.pow(2, 32))
-                {
-                    this.ensureSufficientSpace(5);
-                    this.view.setUint8(this.offset++, 0xce);
-                    this.view.setUint32(this.offset, value);
-                    this.offset += 4;
-                }
-                else // uint64; cannot use bitwise operators (casts to uint32)
-                {
-                    this.ensureSufficientSpace(9);
-                    this.view.setUint8(this.offset++, 0xcf);
-                    this.view.setUint32(this.offset, value / Math.pow(2, 32));
-                    this.offset += 4;
-                    this.view.setUint32(this.offset, value);
-                    this.offset += 4;
-                }
-            }
-            else
-            {
-                if (value >= -32)
-                {
-                    this.ensureSufficientSpace(1);
-                    this.view.setInt8(this.offset++, value);
-                }
-                else if (value >= -(1 << 8))
-                {
-                    this.ensureSufficientSpace(2);
-                    this.view.setUint8(this.offset++, 0xd0);
-                    this.view.setInt8(this.offset++, value);
-                }
-                else if (value >= -(1 << 16))
-                {
-                    this.ensureSufficientSpace(3);
-                    this.view.setUint8(this.offset++, 0xd1);
-                    this.view.setInt16(this.offset, value);
-                    this.offset += 2;
-                }
-                else if (value >= -Math.pow(2, 32))
-                {
-                    this.ensureSufficientSpace(5);
-                    this.view.setUint8(this.offset++, 0xd2);
-                    this.view.setInt32(this.offset, value);
-                    this.offset += 4;
-                }
-                else // TODO: figure out how to encode int64
-                {
-                    this.ensureSufficientSpace(9);
-                    this.view.setUint8(this.offset++, 0xcb);
-                    this.view.setFloat64(this.offset, value);
-                    this.offset += 8;
-                }
-            }
+            this.unsafeWriteInt(value);
         }
         else
         {
@@ -321,6 +253,114 @@ export class Encoder
             this.view.setFloat64(this.offset, value);
             this.offset += 8;
         }
+    }
+
+    /**
+     * Encode a numeric value which has been guaranteed to be an integer
+     * in the range [Number.MIN_SAFE_INTEGER, Number.MAX_SAFE_INTEGER].
+     */
+    private unsafeWriteInt(value: number)
+    {
+        if (value >= 0)
+        {
+            if (value < (1 << 7))
+            {
+                this.ensureSufficientSpace(1);
+                this.view.setUint8(this.offset++, value);
+            }
+            else if (value < (1 << 8))
+            {
+                this.ensureSufficientSpace(2);
+                this.view.setUint8(this.offset++, 0xcc);
+                this.view.setUint8(this.offset++, value);
+            }
+            else if (value < (1 << 16))
+            {
+                this.ensureSufficientSpace(3);
+                this.view.setUint8(this.offset++, 0xcd);
+                this.view.setUint16(this.offset, value);
+                this.offset += 2;
+            }
+            else if (value < Math.pow(2, 32))
+            {
+                this.ensureSufficientSpace(5);
+                this.view.setUint8(this.offset++, 0xce);
+                this.view.setUint32(this.offset, value);
+                this.offset += 4;
+            }
+            else // uint64; cannot use bitwise operators (casts to int32)
+            {
+                this.ensureSufficientSpace(9);
+                this.view.setUint8(this.offset++, 0xcf);
+                this.view.setUint32(this.offset, value / (2**32));
+                this.offset += 4;
+                this.view.setUint32(this.offset, value);
+                this.offset += 4;
+            }
+        }
+        else
+        {
+            if (value >= -32)
+            {
+                this.ensureSufficientSpace(1);
+                this.view.setInt8(this.offset++, value);
+            }
+            else if (value >= -(1 << 8))
+            {
+                this.ensureSufficientSpace(2);
+                this.view.setUint8(this.offset++, 0xd0);
+                this.view.setInt8(this.offset++, value);
+            }
+            else if (value >= -(1 << 16))
+            {
+                this.ensureSufficientSpace(3);
+                this.view.setUint8(this.offset++, 0xd1);
+                this.view.setInt16(this.offset, value);
+                this.offset += 2;
+            }
+            else if (value >= -Math.pow(2, 32))
+            {
+                this.ensureSufficientSpace(5);
+                this.view.setUint8(this.offset++, 0xd2);
+                this.view.setInt32(this.offset, value);
+                this.offset += 4;
+            }
+            else // TODO: figure out how to encode int64
+            {
+                this.ensureSufficientSpace(9);
+                this.view.setUint8(this.offset++, 0xcb);
+                this.view.setFloat64(this.offset, value);
+                this.offset += 8;
+            }
+        }
+    }
+
+    private writeBigInt(value: bigint)
+    {
+        if (
+            value >= BigInt(Number.MIN_SAFE_INTEGER) &&
+            value <= BigInt(Number.MAX_SAFE_INTEGER)
+        ) {
+            this.unsafeWriteInt(Number(value));
+        }
+        else if (value < 0)
+        {
+            if (value <= -(BigInt(2)**BigInt(63)))
+                throw new Error("msgpack: cannot encode BigInt less than -2^63");
+
+            this.ensureSufficientSpace(9);
+            this.view.setUint8(this.offset++, 0xd3);
+            this.view.setBigInt64(this.offset, value);
+            this.offset += 8;
+        }
+        else if (value < BigInt(2)**BigInt(64))
+        {
+            this.ensureSufficientSpace(9);
+            this.view.setUint8(this.offset++, 0xcf);
+            this.view.setBigUint64(this.offset, value);
+            this.offset += 8;
+        }
+        else throw new Error("msgpack: cannot encode BigInt greater than 2^64 - 1");
     }
     
     private writeString(value: string)
