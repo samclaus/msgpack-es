@@ -92,7 +92,7 @@ const identifierToType: Uint8Array = function()
         arr[i] = MsgPack.NegFixInt;
 
     return arr;
-}()
+}();
 
 /**
  * Standard timestamp extension (-1 identifier) from MessagePack spec.
@@ -304,7 +304,7 @@ export class Decoder
                 this.offset += 8;
                 return value;
             }
-            throw new Error("msgpack: 64-bit unsigned integer exceeds max safe JS integer value");
+            throw new Error("msgpack: 64-bit unsigned integer exceeds max safe JS integer value (and BigInts are not supported)");
         }
 
         this.offset += 4;
@@ -336,14 +336,15 @@ export class Decoder
     {
         // TODO: inspect high 4 bytes and support numbers within safe range
         // for regular JS number (-2^53, 2^53)
-        if (true) {
-            if (typeof BigInt === "function") {
-                const value = this.view.getBigInt64(this.offset);
-                this.offset += 8;
-                return value;
-            }
+        if (typeof BigInt === "function") {
+            const value = this.view.getBigInt64(this.offset);
+            this.offset += 8;
+
+            // BigInts are annoying to work with in JavaScript, so prefer traditional floating point
+            // numbers where possible.
+            return value <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(value) : value;
         }
-        throw new TypeError("msgpack: 64-bit signed integer exceeds max safe JS integer value");
+        throw new TypeError("msgpack: encountered 64-bit signed integer but BigInts are not supported (fallback code is possible which decodes 4 bytes at a time and computes the final number but implementation is tricky--PRs welcome!)");
     }
 
     private takeFloat32(): number
