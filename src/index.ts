@@ -1,8 +1,8 @@
-import { Encoder } from "./Encoder";
-import { Decoder } from "./Decoder";
+import { Encoder } from "./encoding";
+import { Decoder } from "./decoding";
 
-export * from "./Encoder";
-export * from "./Decoder";
+export * from "./encoding";
+export * from "./decoding";
 
 /**
  * Encode a value to the MsgPack binary format. This is just a
