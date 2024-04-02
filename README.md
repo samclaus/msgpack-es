@@ -208,24 +208,3 @@ Opaque tuple of an extension type identifier and the raw data associated with it
 - `data: Uint8Array`
 
     The opaque data.
-
-### `enum Decoder.MapBehavior`
-
-Determines `Decoder` behavior when a MessagePack `map` is encountered.
-
-- `PreferJSON = 0`
-
-    Maps will be decoded as native JS objects, unless a key is decoded
-    whose JS type evaluates to `object`, in which case all decoded keys
-    will be abandoned and the map will be decoded from scratch into an
-    ES6 Map which supports arbitrary key types.
-
-- `AlwaysJSON = 1`
-
-    Maps will be always be decoded as native JS objects. This means all
-    decoded keys will be coerced to strings, which is almost certainly
-    undesirable if decoding maps with objects or arrays as keys.
-
-- `AlwaysES6Map = 2`
-
-    Maps will always be decoded as ES6 Map objects.

@@ -1,6 +1,52 @@
+import { U32_CAP } from './constants.js';
+import { extDecoders } from './extensions.js';
 
-const enum MsgPack
-{
+export interface DecodeOpts {
+     /**
+     * Value to deserialize MsgPack's `Nil` type as. Should be set to either `null` or
+     * `undefined`; default is `null`.
+     */
+    nilValue: null | undefined;
+    /**
+     * Determines behavior when a `String` value is encountered whose data is not valid UTF-8.
+     * Default is just to produce a Uint8Array copy of the invalid UTF-8 data.
+     */
+    badUTF8Handler: (utf8: Uint8Array) => any;
+    /**
+     * Determines behavior when an extension value is encountered for which no decoding function
+     * has been registered. Default is to return an `UnknownExt` instance and avoid blowing up
+     * the entire decoding operation with an error.
+     */
+    unknownExtHandler: (id: number, data: Uint8Array) => any;
+    /**
+     * By default, MessagePack `map` types will be decoded as plain JavaScript objects and the
+     * library will fall back to using an ES6 `Map` instance if a key is encountered which is
+     * not a primitive value (using `typeof key === "object"`). Use this flag to force the
+     * library to always decode as ES6 `Map` instances.
+     */
+    forceES6Map: boolean;
+}
+
+/**
+ * UnknownExt describes an unrecognized extension sequence that
+ * was encountered during decoding and passed through opaquely.
+ */
+export class UnknownExt {
+    constructor(
+        /**
+         * Extension type identifier.
+         */
+        readonly type: number,
+        /**
+         * Extension sequence data.
+         */
+        readonly data: Uint8Array,
+    ) {}
+}
+
+const enum Type {
+    // CAUTION: the type lookup initialization code depends on the
+    // order of these values for the sake of being efficient.
     PosFixInt,
     FixMap,
     FixArray,
@@ -40,476 +86,246 @@ const enum MsgPack
     NegFixInt
 }
 
-type ExtDecoderFn = (data: Uint8Array) => any;
+const typeLookup = new Uint8Array(256); {
+    let i = 0x00;
+    while (i < 0x80) typeLookup[i++] = Type.PosFixInt;
+    while (i < 0x90) typeLookup[i++] = Type.FixMap;
+    while (i < 0xa0) typeLookup[i++] = Type.FixArray;
+    while (i < 0xc0) typeLookup[i++] = Type.FixString;
+    for (; i < 0xe0; ++i) typeLookup[i] = i - 188;
+    for (i = 0xe0; i <= 0xff; ++i) typeLookup[i] = Type.NegFixInt;
+};
 
-const identifierToType: Uint8Array = function()
-{
-    const arr = new Uint8Array(256);
+const
+    utf8Decoder = new TextDecoder("utf-8", { fatal: true }),
+    opts: DecodeOpts = Object.seal<DecodeOpts>({
+        nilValue: null,
+        badUTF8Handler: utf8 => utf8.slice(),
+        unknownExtHandler: (id, data) => new UnknownExt(id, data),
+        forceES6Map: false,
+    });
 
-    for (let i = 0x00; i <= 0x7f; ++i)
-        arr[i] = MsgPack.PosFixInt;
-    for (let i = 0x80; i <= 0x8f; ++i)
-        arr[i] = MsgPack.FixMap;
-    for (let i = 0x90; i <= 0x9f; ++i)
-        arr[i] = MsgPack.FixArray;
-    for (let i = 0xa0; i <= 0xbf; ++i)
-        arr[i] = MsgPack.FixString;
+export { opts as DECODE_OPTS };
 
-    arr[0xc0] = MsgPack.Nil;
-    arr[0xc1] = MsgPack.NeverUsed;
-    arr[0xc2] = MsgPack.False;
-    arr[0xc3] = MsgPack.True;
-    arr[0xc4] = MsgPack.Bin8;
-    arr[0xc5] = MsgPack.Bin16;
-    arr[0xc6] = MsgPack.Bin32;
-    arr[0xc7] = MsgPack.Ext8;
-    arr[0xc8] = MsgPack.Ext16;
-    arr[0xc9] = MsgPack.Ext32;
-    arr[0xca] = MsgPack.Float32;
-    arr[0xcb] = MsgPack.Float64;
-    arr[0xcc] = MsgPack.Uint8;
-    arr[0xcd] = MsgPack.Uint16;
-    arr[0xce] = MsgPack.Uint32;
-    arr[0xcf] = MsgPack.Uint64;
-    arr[0xd0] = MsgPack.Int8;
-    arr[0xd1] = MsgPack.Int16;
-    arr[0xd2] = MsgPack.Int32;
-    arr[0xd3] = MsgPack.Int64;
-    arr[0xd4] = MsgPack.FixExt1;
-    arr[0xd5] = MsgPack.FixExt2;
-    arr[0xd6] = MsgPack.FixExt4;
-    arr[0xd7] = MsgPack.FixExt8;
-    arr[0xd8] = MsgPack.FixExt16;
-    arr[0xd9] = MsgPack.String8;
-    arr[0xda] = MsgPack.String16;
-    arr[0xdb] = MsgPack.String32;
-    arr[0xdc] = MsgPack.Array16;
-    arr[0xdd] = MsgPack.Array32;
-    arr[0xde] = MsgPack.Map16;
-    arr[0xdf] = MsgPack.Map32;
-
-    for (let i = 0xe0; i <= 0xff; ++i)
-        arr[i] = MsgPack.NegFixInt;
-
-    return arr;
-}();
-
-/**
- * Standard timestamp extension (-1 identifier) from MessagePack spec.
- * 
- * @see https://github.com/msgpack/msgpack/blob/master/spec.md#timestamp-extension-type
- */
-function decodeTimestamp(data: Uint8Array): Date
-{
-    const view = new DataView(data.buffer, data.byteOffset, data.length);
-
-    switch (data.length)
-    {
-        case 4:
-        {
-            return new Date(view.getUint32(0) * 1000);
-        }
-        case 8:
-        {
-            const first32Bits = view.getUint32(0);
-            const nano = first32Bits >>> 2;
-            const sec = ((first32Bits & 0x3) * Math.pow(2, 32)) + view.getUint32(4);
-
-            return new Date((sec * 1000) + Math.floor(nano / 1e6));
-        }
-        case 12:
-        {
-            // TODO: not sure if this actually decodes the int64 seconds correctly
-            const nano = view.getUint32(0);
-            const sec = (view.getInt32(4) * Math.pow(2, 32)) + view.getUint32(8);
-            const ms = (sec * 1000) + Math.floor(nano / 1e6);
-
-            if (!Number.isSafeInteger(ms))
-                throw new RangeError("msgpack: decodeDate (ext -1): timestamp exceeds safe JS integer range");
-        }
-        default:
-            throw new RangeError(`msgpack: decodeDate (ext -1): invalid data length (${data.length})`);
-    }
-}
-
-/**
- * Class for decoding maps (objects), arrays, buffers, and primitives from MsgPack format.
- */
-export class Decoder
-{
-    private static textDecoder = new TextDecoder("utf-8", { fatal: true });
-
-    /**
-     * Value to deserialize MsgPack's `Nil` type as. Should be set to either `null` or
-     * `undefined`; default is `null`.
-     */
-    nilValue: null | undefined = null;
-
-    /**
-     * Determines behavior when a `String` value is encountered whose data is not valid UTF-8.
-     * If true, deserializing the value will simply produce a raw Uint8Array containing the
-     * data. Otherwise, a TypeError will be thrown and decoding will fail (default).
-     */
-    allowInvalidUTF8 = false;
-
-    /**
-     * If false (default), any attempt to decode an unregistered extension type will raise an
-     * error. If true, unrecognized extension types will be passed through as UnknownExtSeq
-     * objects.
-     */
-    allowUnknownExts = false;
-
-    /**
-     * Determines how MsgPack maps are decoded.
-     */
-    mapBehavior = Decoder.MapBehavior.PreferJSON;
-
-    /**
-     * Registered extension decoders.
-     */
-    private readonly extensions = new Map<number, ExtDecoderFn>();
-
+let
     /**
      * Buffer is a Uint8Array "view" on top of the buffer being decoded. It compliments
      * this.view, because Uint8Array and DataView support different operations.
      */
-    private buffer!: Uint8Array;
-
+    buffer: Uint8Array,
     /**
      * View is a DataView "view" on top of the buffer being decoded. It compliments this.buffer,
      * because Uint8Array and DataView support different operations.
      */
-    private view!: DataView;
-
+    view: DataView,
     /**
      * Offset is the current location in the buffer we are decoding.
      */
-    private offset!: number;
+    offset: number;
 
-    /**
-     * Create a new Decoder with the same configuration and extension decoders.
-     */
-    clone(): Decoder
-    {
-        const d = new Decoder();
+function takeUint8(): number {
+    return view.getUint8(offset++);
+}
 
-        d.nilValue = this.nilValue;
-        d.allowInvalidUTF8 = this.allowInvalidUTF8;
-        d.mapBehavior = this.mapBehavior;
+function takeUint16(): number {
+    const value = view.getUint16(offset);
+    offset += 2;
+    return value;
+}
 
-        this.extensions.forEach((fn, type) => d.registerExt(type, fn));
+function takeUint32(): number {
+    const value = view.getUint32(offset);
+    offset += 4;
+    return value;
+}
 
-        return d;
-    }
+function takeUint64(): number | bigint {
+    const hi32 = view.getUint32(offset);
 
-    /**
-     * Register an extension decoder. Negative extension types are reserved by the spec, but
-     * it is legal for you, the library user, to register decoders for such extensions in case
-     * this library has not been updated to provide one or it does not fit your use case.
-     */
-    registerExt(type: number, decoderFn: ExtDecoderFn)
-    {
-        this.extensions.set(type, decoderFn);
-    }
-
-    /**
-     * Decode the first MsgPack value encountered.
-     * 
-     * @param data The buffer to decode from.
-     */
-    decode<T = any>(data: ArrayBuffer | Uint8Array): T
-    {
-        this.buffer = data instanceof Uint8Array ? data : new Uint8Array(data);
-        this.view = new DataView(this.buffer.buffer, this.buffer.byteOffset);
-        this.offset = 0;
-
-        return this.nextObject();
-    }
-
-    private nextObject(): any
-    {
-        const seqByte = this.takeUint8();
-        const seqType = identifierToType[seqByte] as MsgPack;
-
-        switch (seqType)
-        {
-            case MsgPack.PosFixInt: return seqByte;
-            case MsgPack.FixMap:    return this.takeMap(seqByte & 0xf);
-            case MsgPack.FixArray:  return this.takeArray(seqByte & 0xf);
-            case MsgPack.FixString: return this.takeString(seqByte & 0x1f);
-            case MsgPack.Nil:       return this.nilValue;
-            case MsgPack.NeverUsed: return undefined;
-            case MsgPack.False:     return false;
-            case MsgPack.True:      return true;
-            case MsgPack.Bin8:      return this.takeBinary(this.takeUint8());
-            case MsgPack.Bin16:     return this.takeBinary(this.takeUint16());
-            case MsgPack.Bin32:     return this.takeBinary(this.takeUint32());
-            case MsgPack.Ext8:      return this.takeExt(this.takeUint8());
-            case MsgPack.Ext16:     return this.takeExt(this.takeUint16());
-            case MsgPack.Ext32:     return this.takeExt(this.takeUint32());
-            case MsgPack.Float32:   return this.takeFloat32();
-            case MsgPack.Float64:   return this.takeFloat64();
-            case MsgPack.Uint8:     return this.takeUint8();
-            case MsgPack.Uint16:    return this.takeUint16();
-            case MsgPack.Uint32:    return this.takeUint32();
-            case MsgPack.Uint64:    return this.takeUint64();
-            case MsgPack.Int8:      return this.takeInt8();
-            case MsgPack.Int16:     return this.takeInt16();
-            case MsgPack.Int32:     return this.takeInt32();
-            case MsgPack.Int64:     return this.takeInt64();
-            case MsgPack.FixExt1:   return this.takeExt(1);
-            case MsgPack.FixExt2:   return this.takeExt(2);
-            case MsgPack.FixExt4:   return this.takeExt(4);
-            case MsgPack.FixExt8:   return this.takeExt(8);
-            case MsgPack.FixExt16:  return this.takeExt(16);
-            case MsgPack.String8:   return this.takeString(this.takeUint8());
-            case MsgPack.String16:  return this.takeString(this.takeUint16());
-            case MsgPack.String32:  return this.takeString(this.takeUint32());
-            case MsgPack.Array16:   return this.takeArray(this.takeUint16());
-            case MsgPack.Array32:   return this.takeArray(this.takeUint32());
-            case MsgPack.Map16:     return this.takeMap(this.takeUint16());
-            case MsgPack.Map32:     return this.takeMap(this.takeUint32());
-            case MsgPack.NegFixInt: return seqByte - 256;
-        }
-    }
-
-    private takeUint8(): number
-    {
-        return this.view.getUint8(this.offset++);
-    }
-
-    private takeUint16(): number
-    {
-        const value = this.view.getUint16(this.offset);
-        this.offset += 2;
+    if (hi32 >= (1 << 21)) {
+        // I think it's reasonable to just propagate a "'getBigUint64'
+        // is not defined" error if they are receiving massive values
+        // in an outdated browser (or other ECMAScript runtime)
+        const value = view.getBigUint64(offset);
+        offset += 8;
         return value;
     }
 
-    private takeUint32(): number
-    {
-        const value = this.view.getUint32(this.offset);
-        this.offset += 4;
-        return value;
+    offset += 4;
+    const value = hi32 * U32_CAP + view.getUint32(offset);
+    offset += 4;
+    return value;
+}
+
+function takeInt8(): number {
+    return view.getInt8(offset++);
+}
+
+function takeInt16(): number {
+    const value = view.getInt16(offset);
+    offset += 2;
+    return value;
+}
+
+function takeInt32(): number {
+    const value = view.getInt32(offset);
+    offset += 4;
+    return value;
+}
+
+function takeInt64(): number | bigint {
+    // TODO: inspect high 4 bytes and support numbers within safe range
+    // for regular JS number (-2^53, 2^53), just like I do for uint64s
+    if (typeof BigInt === "function") {
+        const value = view.getBigInt64(offset);
+        offset += 8;
+
+        // BigInts are annoying to work with in JavaScript, so prefer traditional floating point
+        // numbers where possible.
+        return value <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(value) : value;
     }
+    throw new TypeError("msgpack: encountered 64-bit signed integer but BigInts are not supported (fallback code is possible which decodes 4 bytes at a time and computes the final number but implementation is tricky--PRs welcome!)");
+}
 
-    private takeUint64(): number | bigint
-    {
-        const hi32 = this.view.getUint32(this.offset);
+function takeFloat32(): number {
+    const value = view.getFloat32(offset);
+    offset += 4;
+    return value;
+}
 
-        if (hi32 >= (1 << 21))
-        {
-            if (typeof BigInt === "function")
-            {
-                const value = this.view.getBigUint64(this.offset);
-                this.offset += 8;
-                return value;
-            }
-            throw new Error("msgpack: 64-bit unsigned integer exceeds max safe JS integer value (and BigInts are not supported)");
-        }
+function takeFloat64(): number {
+    const value = view.getFloat64(offset);
+    offset += 8;
+    return value;
+}
 
-        this.offset += 4;
-        const value = hi32 * (2**32) + this.view.getUint32(this.offset);
-        this.offset += 4;
-        return value;
-    }
+function takeBinary(length: number): Uint8Array {
+    const start = offset;
+    offset += length;
+    return buffer.slice(start, offset);
+}
 
-    private takeInt8(): number
-    {
-        return this.view.getInt8(this.offset++);
-    }
+function takeString(length: number): string | Uint8Array {
+    const start = offset;
+    offset += length;
+    const utf8 = buffer.subarray(start, offset);
 
-    private takeInt16(): number
-    {
-        const value = this.view.getInt16(this.offset);
-        this.offset += 2;
-        return value;
-    }
-
-    private takeInt32(): number
-    {
-        const value = this.view.getInt32(this.offset);
-        this.offset += 4;
-        return value;
-    }
-
-    private takeInt64(): number | bigint
-    {
-        // TODO: inspect high 4 bytes and support numbers within safe range
-        // for regular JS number (-2^53, 2^53)
-        if (typeof BigInt === "function") {
-            const value = this.view.getBigInt64(this.offset);
-            this.offset += 8;
-
-            // BigInts are annoying to work with in JavaScript, so prefer traditional floating point
-            // numbers where possible.
-            return value <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(value) : value;
-        }
-        throw new TypeError("msgpack: encountered 64-bit signed integer but BigInts are not supported (fallback code is possible which decodes 4 bytes at a time and computes the final number but implementation is tricky--PRs welcome!)");
-    }
-
-    private takeFloat32(): number
-    {
-        const value = this.view.getFloat32(this.offset);
-        this.offset += 4;
-        return value;
-    }
-
-    private takeFloat64(): number
-    {
-        const value = this.view.getFloat64(this.offset);
-        this.offset += 8;
-        return value;
-    }
-
-    private takeBinary(length: number): Uint8Array
-    {
-        /**
-         * TODO: Need to check if spec guarantees arguments to be evaluated
-         * left-to-right so we can condense this to:
-         * 
-         * return this.buffer.subarray(this.offset, this.offset += length);
-         */
-        const start = this.offset;
-        this.offset += length;
-        return this.buffer.slice(start, this.offset);
-    }
-
-    private takeString(length: number): string | Uint8Array
-    {
-        const start = this.offset;
-        this.offset += length;
-        const utf8 = this.buffer.subarray(start, this.offset);
-
-        try
-        {
-            return Decoder.textDecoder.decode(utf8);
-        }
-        catch (error)
-        {
-            if (this.allowInvalidUTF8)
-                return utf8.slice();
-            else
-                throw error;
-        }
-    }
-
-    private takeArray(length: number): any[]
-    {
-        const arr = [];
-
-        for (let i = 0; i < length; ++i)
-            arr.push(this.nextObject());
-
-        return arr;
-    }
-
-    private takeMap(keyCount: number, behavior = this.mapBehavior): object | Map<any, any>
-    {
-        switch (behavior)
-        {
-            case Decoder.MapBehavior.AlwaysJSON:
-            {
-                const map: {[key: string]: any} = {};
-
-                for (let i = 0; i < keyCount; ++i)
-                    map[this.nextObject()] = this.nextObject();
-
-                return map;
-            }
-            case Decoder.MapBehavior.AlwaysES6Map:
-            {
-                const map = new Map();
-
-                for (let i = 0; i < keyCount; ++i)
-                    map.set(this.nextObject(), this.nextObject());
-
-                return map;
-            }
-            case Decoder.MapBehavior.PreferJSON:
-            default:
-            {
-                const mapStart = this.offset;
-                const map: {[key: string]: any} = {};
-
-                for (let i = 0; i < keyCount; ++i)
-                {
-                    const key = this.nextObject();
-
-                    if (typeof key === "object")
-                    {
-                        this.offset = mapStart;
-                        return this.takeMap(keyCount, Decoder.MapBehavior.AlwaysES6Map);
-                    }
-
-                    map[key] = this.nextObject();
-                }
-
-                return map;
-            }
-        }
-    }
-
-    private takeExt(dataLength: number): any
-    {
-        const type = this.takeInt8();
-
-        if (this.extensions.has(type))
-            return this.extensions.get(type)!(this.takeBinary(dataLength));
-        
-        if (this.allowUnknownExts)
-            return <Decoder.UnknownExt>{
-                type: type,
-                data: this.takeBinary(dataLength)
-            };
-        
-        throw new RangeError(`msgpack: decode: unrecognized ext type (${type})`);
-    }
-
-    constructor()
-    {
-        this.extensions.set(-1, decodeTimestamp);
+    try {
+        return utf8Decoder.decode(utf8);
+    } catch {
+        return opts.badUTF8Handler(utf8);
     }
 }
 
-export namespace Decoder
-{
-    export const enum MapBehavior
-    {
-        /**
-         * Maps will be decoded as native JS objects, unless a key is decoded
-         * whose JS type evaluates to `object`, in which case all decoded keys
-         * will be abandoned and the map will be decoded from scratch into an
-         * ES6 Map which supports arbitrary key types.
-         */
-        PreferJSON,
+function takeArray(length: number): any[] {
+    const arr = [];
 
-        /**
-         * Maps will be always be decoded as native JS objects. This means all
-         * decoded keys will be coerced to strings, which is almost certainly
-         * undesirable if decoding maps with objects or arrays as keys.
-         */
-        AlwaysJSON,
+    for (let i = 0; i < length; ++i)
+        arr.push(takeGeneric());
 
-        /**
-         * Maps will always be decoded as ES6 Map objects.
-         */
-        AlwaysES6Map
+    return arr;
+}
+
+function takeMap(keyCount: number, forceMap = opts.forceES6Map): object | Map<any, any> {
+    if (forceMap) {
+        const map = new Map();
+
+        for (let i = 0; i < keyCount; ++i) {
+            map.set(takeGeneric(), takeGeneric());
+        }
+
+        return map;
     }
 
-    /**
-     * UnknownExt describes an unrecognized extension sequence that
-     * was encountered during decoding and passed through opaquely.
-     */
-    export interface UnknownExt
-    {
-        /**
-         * Extension type identifier.
-         */
-        readonly type: number;
-    
-        /**
-         * Extension sequence data.
-         */
-        readonly data: Uint8Array;
+    const
+        mapStart = offset,
+        map: {[key: string]: any} = {};
+
+    for (let i = 0; i < keyCount; ++i) {
+        const key = takeGeneric();
+
+        if (typeof key === "object")
+        {
+            offset = mapStart;
+            return takeMap(keyCount, true);
+        }
+
+        map[key as any] = takeGeneric();
     }
+
+    return map;
+}
+
+function takeExt(dataLength: number): any {
+    const
+        type = takeInt8(),
+        data = takeBinary(dataLength),
+        decodeFn = extDecoders[type + 128];
+
+    return decodeFn ? decodeFn(data) : opts.unknownExtHandler(type, data);
+}
+
+function takeGeneric(): unknown {
+    const
+        seqByte = takeUint8(),
+        seqType = typeLookup[seqByte] as Type;
+
+    switch (seqType) {
+        case Type.PosFixInt: return seqByte;
+        case Type.FixMap:    return takeMap(seqByte & 0xf);
+        case Type.FixArray:  return takeArray(seqByte & 0xf);
+        case Type.FixString: return takeString(seqByte & 0x1f);
+        case Type.Nil:       return opts.nilValue;
+        case Type.NeverUsed: return undefined;
+        case Type.False:     return false;
+        case Type.True:      return true;
+        case Type.Bin8:      return takeBinary(takeUint8());
+        case Type.Bin16:     return takeBinary(takeUint16());
+        case Type.Bin32:     return takeBinary(takeUint32());
+        case Type.Ext8:      return takeExt(takeUint8());
+        case Type.Ext16:     return takeExt(takeUint16());
+        case Type.Ext32:     return takeExt(takeUint32());
+        case Type.Float32:   return takeFloat32();
+        case Type.Float64:   return takeFloat64();
+        case Type.Uint8:     return takeUint8();
+        case Type.Uint16:    return takeUint16();
+        case Type.Uint32:    return takeUint32();
+        case Type.Uint64:    return takeUint64();
+        case Type.Int8:      return takeInt8();
+        case Type.Int16:     return takeInt16();
+        case Type.Int32:     return takeInt32();
+        case Type.Int64:     return takeInt64();
+        case Type.FixExt1:   return takeExt(1);
+        case Type.FixExt2:   return takeExt(2);
+        case Type.FixExt4:   return takeExt(4);
+        case Type.FixExt8:   return takeExt(8);
+        case Type.FixExt16:  return takeExt(16);
+        case Type.String8:   return takeString(takeUint8());
+        case Type.String16:  return takeString(takeUint16());
+        case Type.String32:  return takeString(takeUint32());
+        case Type.Array16:   return takeArray(takeUint16());
+        case Type.Array32:   return takeArray(takeUint32());
+        case Type.Map16:     return takeMap(takeUint16());
+        case Type.Map32:     return takeMap(takeUint32());
+        case Type.NegFixInt: return seqByte - 256;
+    }
+}
+
+/**
+ * Decode the first MsgPack value encountered.
+ * 
+ * @param data The buffer to decode from.
+ */
+export function decode<T = unknown>(data: ArrayBuffer | Uint8Array): T {
+    buffer = data instanceof Uint8Array ? data : new Uint8Array(data);
+    view = new DataView(buffer.buffer, buffer.byteOffset);
+    offset = 0;
+
+    const result = takeGeneric() as T;
+
+    // Don't impede garbage collection!
+    buffer = undefined as any;
+    view = undefined as any;
+
+    return result;
 }
