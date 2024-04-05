@@ -33,7 +33,7 @@ function rangeError(msg: string): void {
  * 
  * @param newSize Size, in bytes, to allocate for the new buffer.
  */
-export function resize(newSize: number): void {
+export function resizeEncodingBuffer(newSize: number): void {
     buffer = new Uint8Array(newSize);
     view = new DataView(buffer.buffer);
 }
@@ -43,7 +43,7 @@ function growIfNeeded(bytesToEncode: number): void {
 
     if (need > buffer.length) {
         const old = buffer;
-        resize(Math.max(old.length * 2, need));
+        resizeEncodingBuffer(Math.max(old.length * 2, need));
         buffer.set(old);
     }
 }
@@ -382,7 +382,7 @@ function recursiveEncode(data: any): void {
  */
 export function encodeView(value: any, reserve = 0): Uint8Array {
     if (reserve > buffer.length) {
-        resize(reserve);
+        resizeEncodingBuffer(reserve);
     }
 
     offset = 0;

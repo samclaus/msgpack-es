@@ -1,8 +1,8 @@
 import { U32_CAP } from './constants.js';
 import { registerExtension } from './extensions.js';
 
-export { DECODE_OPTS, DecodeOpts, UnknownExt, decode } from './decoding.js';
-export { encode, encodeView } from './encoding.js';
+export { DECODE_OPTS, UnknownExt, decode, type DecodeOpts } from './decoding.js';
+export { encode, encodeView, resizeEncodingBuffer } from './encoding.js';
 export { registerExtension };
 
 /**
