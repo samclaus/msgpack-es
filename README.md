@@ -11,7 +11,7 @@
 - **Tiny bundle size:** Less than **8KB** minified, less than **3KB** with GZIP! This library is also distributed as an ES6 module, so it can be even smaller if you use a bundler setup with tree-shaking and don't use all the functionality.
 - **Memory-efficient:** `msgpack-es` avoids wasteful memory allocations at all costs. It even exposes functions for optimizing the encoding process.
 - **Bandwidth-efficient:** `msgpack-es` attempts to encode ES values using the smallest MessagePack equivalents. For example, if you try to encode the integer `5`, it will get encoded as a MessagePack `fixint` and take up a single byte.
-- **Easy-to-use and understand:** `msgpack-es` exposes a tiny API (5 functions, 1 small class, and 1 global options object). The source code is just a few TypeScript files, the longest of which is about 400 lines. It doesn't use mixins, function-currying, or any other "neat" tricks which can hurt runtime performance and readability.
+- **Easy-to-use and understand:** `msgpack-es` exposes a tiny API (5 functions, 1 small class, and 1 global options object). The source code is just a few TypeScript files, the longest of which is about 400 lines. It doesn't use mixins, function-currying, or any other "neat" tricks which can hurt runtime performance and readability. It also has no dependencies.
 - **Public-domain and honest:** `msgpack-es` is completely licensed to the public domain (read the license file) and does not make any hype-y marketing claims. It is a great 85% solution, and you can easily copy and modify the code if you have a niche use-case for MessagePack and want to optimize for your needs.
 
 ## Weaknesses
