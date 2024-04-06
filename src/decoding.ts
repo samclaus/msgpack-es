@@ -99,7 +99,7 @@ const typeLookup = new Uint8Array(256); {
 const
     utf8Decoder = new TextDecoder("utf-8", { fatal: true }),
     opts: DecodeOpts = Object.seal<DecodeOpts>({
-        nilValue: null,
+        nilValue: undefined,
         badUTF8Handler: utf8 => utf8.slice(),
         unknownExtHandler: (id, data) => new UnknownExt(id, data),
         forceES6Map: false,
