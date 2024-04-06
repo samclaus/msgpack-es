@@ -1,6 +1,6 @@
 {
   "name": "msgpack-es",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Excellent ECMAScript MessagePack implementation for 85% of people.",
   "author": {
     "name": "Sam Claus",
@@ -20,9 +20,9 @@
   "homepage": "https://samcla.us/projects",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/samterainsights/msgpack-es.git"
+    "url": "git+https://github.com/samclaus/msgpack-es.git"
   },
-  "bugs": "https://github.com/samterainsights/msgpack-es/issues",
+  "bugs": "https://github.com/samclaus/msgpack-es/issues",
   "scripts": {
     "test": "vitest",
     "build": "vite build",
