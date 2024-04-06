@@ -19,7 +19,7 @@
             "ES2015",
             "ES2020.BigInt"
         ],
-        "outDir": "dist"
+        "outDir": "dist",
     },
     "files": [
         "src/index.ts"

@@ -1,35 +1,42 @@
 {
-  "name": "msgpack-ts",
-  "version": "2.0.0",
-  "description": "High performance TypeScript/JavaScript MessagePack implementation",
-  "main": "dist/index.js",
-  "type": "module",
-  "types": "dist/index.d.ts",
+  "name": "msgpack-es",
+  "version": "0.0.0",
+  "description": "Excellent ECMAScript MessagePack implementation for 85% of people.",
+  "author": {
+    "name": "Sam Claus",
+    "email": "hello@samcla.us",
+    "url": "https://samcla.us"
+  },
+  "license": "WTFPL",
+  "keywords": [
+    "MessagePack",
+    "serialization",
+    "deserialization",
+    "encoding",
+    "decoding",
+    "binary",
+    "JSON"
+  ],
+  "homepage": "https://samcla.us/projects",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/samterainsights/msgpack-es.git"
+  },
+  "bugs": "https://github.com/samterainsights/msgpack-es/issues",
   "scripts": {
     "test": "vitest",
     "build": "vite build",
-    "prepublishOnly": "tsc"
+    "prepublishOnly": "pnpm build"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/samterainsights/msgpack-ts.git"
-  },
-  "author": {
-    "name": "Sam Claus",
-    "email": "samclaus1999@gmail.com",
-    "url": "https://github.com/samterainsights"
-  },
-  "license": "Apache-2.0",
-  "bugs": {
-    "url": "https://github.com/samterainsights/msgpack-ts/issues"
-  },
-  "homepage": "https://github.com/samterainsights/msgpack-ts#readme",
   "devDependencies": {
     "typescript": "^5.4.4",
     "vite": "^5.2.8",
     "vite-plugin-dts": "^3.8.1",
     "vitest": "^1.4.0"
   },
+  "type": "module",
+  "main": "dist/index.mjs",
+  "types": "dist/index.d.ts",
   "files": [
     "/dist/**/*"
   ]
