@@ -6,6 +6,8 @@
   "type": "module",
   "types": "dist/index.d.ts",
   "scripts": {
+    "test": "vitest",
+    "build": "vite build",
     "prepublishOnly": "tsc"
   },
   "repository": {
@@ -23,7 +25,9 @@
   },
   "homepage": "https://github.com/samterainsights/msgpack-ts#readme",
   "devDependencies": {
-    "typescript": "^4.1.2"
+    "typescript": "^5.4.4",
+    "vite": "^5.2.8",
+    "vitest": "^1.4.0"
   },
   "files": [
     "/dist/**/*"
