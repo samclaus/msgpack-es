@@ -235,68 +235,36 @@ function writeMapPrefix(keyCount: number): void {
 }
 
 function writeExt(type: number, data: Uint8Array): void {
-    switch (data.length) {
-        case 1:
-            growIfNeeded(3);
-            buffer[offset++] = 0xd4;
-            buffer[offset++] = type;
-            buffer[offset++] = data[0]!;
-            break;
-        case 2:
-            growIfNeeded(4);
-            buffer[offset++] = 0xd5;
-            buffer[offset++] = type;
-            buffer.set(data, offset);
-            offset += 2;
-            break;
-        case 4:
-            growIfNeeded(6);
-            buffer[offset++] = 0xd6;
-            buffer[offset++] = type;
-            buffer.set(data, offset);
-            offset += 4;
-            break;
-        case 8:
-            growIfNeeded(10);
-            buffer[offset++] = 0xd7;
-            buffer[offset++] = type;
-            buffer.set(data, offset);
-            offset += 8;
-            break;
-        case 16:
-            growIfNeeded(18);
-            buffer[offset++] = 0xd8;
-            buffer[offset++] = type;
-            buffer.set(data, offset);
-            offset += 16;
-            break;
-        default:
-            if (data.length < (1 << 8)) {
-                growIfNeeded(3 + data.length);
-                buffer[offset++] = 0xc7;
-                buffer[offset++] = data.length;
-                buffer[offset++] = type;
-                buffer.set(data, offset);
-                offset += data.length;
-            } else if (data.length < (1 << 16)) {
-                growIfNeeded(4 + data.length);
-                buffer[offset++] = 0xc8;
-                view.setUint16(offset, data.length);
-                offset += 2;
-                buffer[offset++] = type;
-                buffer.set(data, offset);
-                offset += data.length;
-            } else if (data.length < U32_CAP) {
-                growIfNeeded(6 + data.length);
-                buffer[offset++] = 0xc9;
-                view.setUint32(offset, data.length);
-                offset += 4;
-                buffer[offset++] = type;
-                buffer.set(data, offset);
-                offset += data.length;
-            } else {
-                rangeError(`ext length (${data.length}) >= 2^32`);
-            }
+    // Common case for encoding ECMAScript Date objects FIRST
+    // so we avoid excess branch checks!
+    //
+    // NOTE: this library does not use fix ext 1/2/4/16 or ext 8
+    // because they hardly save any bandwidth while incurring
+    // lots of branching and increasing code size!
+    if (data.length === 8) {
+        growIfNeeded(10);
+        buffer[offset++] = 0xd7;
+        buffer[offset++] = type;
+        buffer.set(data, offset);
+        offset += 8;
+    } else if (data.length < (1 << 16)) {
+        growIfNeeded(4 + data.length);
+        buffer[offset++] = 0xc8;
+        view.setUint16(offset, data.length);
+        offset += 2;
+        buffer[offset++] = type;
+        buffer.set(data, offset);
+        offset += data.length;
+    } else if (data.length < U32_CAP) {
+        growIfNeeded(6 + data.length);
+        buffer[offset++] = 0xc9;
+        view.setUint32(offset, data.length);
+        offset += 4;
+        buffer[offset++] = type;
+        buffer.set(data, offset);
+        offset += data.length;
+    } else {
+        rangeError(`ext length (${data.length}) >= 2^32`);
     }
 }
 
