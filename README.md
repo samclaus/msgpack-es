@@ -1,231 +1,172 @@
-# msgpack-ts
+`msgpack-es` is a modern ECMAScript (ES; commonly referred to as "JavaScript") implementation of the [MessagePack](https://msgpack.org) format, which is a binary format with similar functionality to JSON. MessagePack data is often much more _compact_ than equivalent JSON data, but you should note that modern `JSON.stringify()` and `JSON.parse()` implementations will likely be _faster_ than `msgpack-es` for typical data&mdash;**choose your trade-offs**! If, for example, you are sending a lot of JSON objects with large byte arrays as Base64-encoded strings, MessagePack will be substantially more compact than JSON, and `msgpack-es` might actually encode/decode faster than the built-in JSON functions.
 
-Fast MessagePack implementation in TypeScript. Designed as a faster, smaller
-alternative to `msgpack-lite`. Both the `Encoder` and `Decoder` are quite
-configurable, but performance was prioritized with as little branching as
-possible.
+- [Strengths](#strengths)
+- [Weaknesses](#weaknesses)
+- [Quick Start](#quick-start)
+- [Configuration](#configuration)
+- [Optimization](#optimization)
 
-**TODO**
+## Strengths
 
-- Add Closure-compiled browser distribution
-- Add thorough tests
-- Add benchmarks
+- **Tiny bundle size:** Less than **8KB** minified, less than **3KB** with GZIP! This library is also distributed as an ES6 module, so it can be even smaller if you use a bundler setup with tree-shaking and don't use all the functionality.
+- **Memory-efficient:** `msgpack-es` avoids wasteful memory allocations at all costs. It even exposes functions for optimizing the encoding process.
+- **Bandwidth-efficient:** `msgpack-es` attempts to encode ES values using the smallest MessagePack equivalents. For example, if you try to encode the integer `5`, it will get encoded as a MessagePack `fixint` and take up a single byte.
+- **Easy-to-use and understand:** `msgpack-es` exposes a tiny API (5 functions, 1 small class, and 1 global options object). The source code is just a few TypeScript files, the longest of which is about 400 lines. It doesn't use mixins, function-currying, or any other "neat" tricks which can hurt runtime performance and readability. It also has no dependencies.
+- **Public-domain and honest:** `msgpack-es` is completely licensed to the public domain (read the license file) and does not make any hype-y marketing claims. It is a great 85% solution, and you can easily copy and modify the code if you have a niche use-case for MessagePack and want to optimize for your needs.
 
-**You can optimize further**
+## Weaknesses
 
-If your MessagePack traffic contains many or large binary buffers, you may
-want to fork this repo and alter the `takeBinary(length)` method of the
-`Decoder` to use `this.buffer.subarray` in place of `this.buffer.slice`,
-because `Uint8Array.slice()` creates a copy of the bytes. This library
-assumes that your messages will not consist primarily of binary objects
-and thus it is undesirable to return subviews of the same buffer being
-decoded because they will hold references to the entire buffer that was
-decoded, likely keeping it in memory when it is not needed.
+- **Depends on** `TextEncoder`, `TextDecoder`, `Uint8Array`, and `DataView` APIs. These APIs allow the library to be small _and_ more performant, but you are out of luck if your ES runtime does not provide them and you cannot or will not polyfill them for some reason. However, all remotely-modern browsers (and Deno) provide these features.
+- Encoding speed was not _the_ top priority. `msgpack-es` **uses branching** (if-statements, etc.) and **runtime type-checking** (`typeof`, etc.) to inspect values and choose the smallest MessagePack representation for them. If you know that all of the numbers you will be encoding are decimals, and speed is a big concern, you may want to copy the code and modify it to get rid of some of the if-statements and just always encode ES `number` values as MessagePack `float` values.
+- MessagePack, as a binary format, is **not as easy to inspect as JSON is**. You need a specialized way to view it when you are debugging issues with your application data.
+- **No streaming support**, i.e., if you need to encode/decode a large quantity of data
+that can't fit in memory all at once, `msgpack-es` will not work for you. I am open
+to exploring streaming support in the future, provided it does not affect any of
+the library's current strengths for people who do not care about streaming (most of them, presumably).
 
 ## Quick Start
 
-For more information, read the [docs](#documentation).
+### In Your Terminal
+```Bash
+npm install --save-dev msgpack-es
+# or, if you use PNPM:
+pnpm install --save-dev msgpack-es
+# or, if you use Yarn:
+yarn add --dev msgpack-es
+```
 
-Install the library via NPM: `npm i --save-dev msgpack-ts`.
-
+### Basic Encoding/Decoding
 ```TypeScript
-import { encode, decode, Decoder } from "msgpack-ts";
+import { encode, decode } from 'msgpack-es';
 
-/**
- * Both x and y will be in range [0, 255].
- */
-class Coordinate
-{
-    static encode(coord: Coordinate): Uint8Array
-    {
-        return new Uint8Array([coord.x, coord.y]);
-    }
+const request = {
+    type: 'create-thread',
+    data: {
+        name: 'Buy/Sell Services',
+        description: 'Buy and/or advertise any kind of service.',
+        nsfw: false,
+        msg_limit_per_user_per_hour: 1,
 
-    static decode(data: Uint8Array): Coordinate
-    {
-        return new Coordinate(data[0], data[1]);
-    }
+    },
+};
 
-    static backwardsDecode(data: Uint8Array): Coordinate
-    {
-        return new Coordinate(data[1], data[0]);
-    }
+const encoded = encode(request); // Uint8Array
 
+// This is where you would normally send the encoded/serialized
+// data to the server or something...
+
+const decoded = decode(encoded); // identical to 'request'
+```
+
+### Encoding/Decoding MessagePack Extensions
+```TypeScript
+import { encode, decode, registerExtension } from 'msgpack-es';
+
+// Standard ES6 class
+class Color {
+    // NOTE: 'msgpack-es' is TypeScript-compatible and this
+    // example is TypeScript code; I am using the TypeScript
+    // property/parameter shorthand here
     constructor(
-        readonly x: number,
-        readonly y: number
+        readonly r: number, // integer [0, 255]
+        readonly g: number, // integer [0, 255]
+        readonly b: number, // integer [0, 255]
     ) {}
 }
 
-function main()
-{
-    const message: SomeInterface = {
-        type: "add-user",
-        data: {
-            firstName: "Jane",
-            lastName: "Doe",
-            age: 27,
-            female: true,
-            location: new Coordinate(10, 192),
-            username: "janedoe92",
-            passwordHash: new Uint8Array(32)
-        }
-    };
+registerExtension(
+    15, // Unique ID for extension, used by encode() and decode()
+    Color, // Class value, so encode() can recognize instances
+    color => new Uint8Array([color.r, color.g, color.b]), // Encode
+    buffer => new Color(buffer[0], buffer[1], buffer[2]), // Decode
+);
 
-    encode.encoder.registerExt(Coordinate, 0, Coordinate.encode);
-    decode.decoder.registerExt(0, Coordinate.decode);
+// NOTE: msgpack-es provides the standard -1 MessagePack
+// extension for built-in Date class automatically because
+// it is so ubiquitous. You could override it if, say, you
+// use the 'moment' library exclusively and want to always
+// encode/decode using 'moment' date objects
 
-    // encode() uses the encode.encoder instance
-    const encoded = encode(message);
+const appearance = {
+    light: true,
+    primary: new Color(8, 55, 247),
+    accent: new Color(132, 0, 247),
+    rootFontSizePx: 16,
+    timestamp: new Date(),
+};
 
-    // decode() uses the decode.decoder instance
-    const decoded = decode<SomeInterface>(encoded);
+const encoded = encode(appearance); // Uint8Array
 
-    // Create separate instances if you need multiple configurations
-    const myDecoder = new Decoder();
-    myDecoder.nilValue = undefined;
-    myDecoder.allowInvalidUTF8 = true;
-    myDecoder.allowUnknownExts = true;
-    myDecoder.registerExt(0, Coordinate.backwardsDecode);
+// This is where you would normally send the encoded/serialized
+// data to the server or store it or whatever...
 
-    // Both Encoder and Decoder support cloning instances
-    const slightlyDifferent = myDecoder.clone();
-    slighlyDifferent.nilValue = null;
-}
+const decoded = decode(encoded); // identical to 'appearance'
 ```
 
-## Documentation
+## Configuration
 
-### `class Encoder`
+`encode()` is not configurable. The only caveat here is that `undefined`
+values in objects or ES6 `Map` instances are skipped. If you want an
+"empty" value in a `Map` or object to get encoded as a MessagePack `nil`
+value, set it to `null`.
 
-**static**
+`decode()` can be configured via the `DECODE_OPTIONS` object, which has
+the following fields:
 
-- `Encoder.global: Encoder`
+- `nilValue`: What to decode MessagePack `nil` values as: `null` or
+`undefined`? `undefined` by default because I (Sam Claus) think that [`null`
+is a horrible stain on the language](https://medium.com/@oleg008/what-if-we-stop-using-null-d705302b545e), but sometimes other people want/need
+to use `null`.
+- `badUTF8Handler`: Callback to handle MessagePack `string` values that are
+not valid UTF-8. Receives a `Uint8Array` _view_ (not copy) of the relevant
+string data, and should either return a decoded value or throw an error if
+you want the entire `decode()` call to fail. By default, a `Uint8Array` copy of
+the string data is returned (whereas correct UTF-8 would be decoded as an ES
+`string`) so that the rest of the `decode()` operation can still complete.
+- `unknownExtHandler`: Callback to handle MessagePack `ext` values for which
+no decoder has been provided. Receives the integer extension ID and a
+`Uint8Array` _view_ of the data, and should either return a decoded value or
+throw an error if you want the entire `decode()` call to fail. By default, an
+`UnknownExt` instance is returned so the rest of the `decode()` operation can
+complete but you can still detect bad/unexpected MessagePack `ext` values.
+- `forceES6Map`: By default, MessagePack `map` values will be decoded as
+vanilla objects, but `msgpack-es` will fall back to using an ES6 `Map` instance
+if it encounters a decoded key of type `object`. Set `forceES6Map` to `true`
+if you want to _always_ decode using ES6 `Map`s.
 
-    A global `Encoder` instance, purely for convenience.
+## Optimization
 
-- `Encoder.encode(data: any, initBuffSize?: number): Uint8Array`
+By "optimization", I mean making encode/decode operations take less time and/or
+use less memory (RAM).
 
-    Convenience function to call `Encoder.global.encode()`.
-
-**constructor**
-
-- `new Encoder(reserve = 128)`
-
-    Create a new `Encoder` instance. You may pass the number of bytes to
-    allocate immediately as an encoding buffer, or it will default to `128`.
-
-**instance**
-
-- `Encoder.encode(data: any, reserve?: number): Uint8Array`
-
-    Encode a JavaScript object or primitive to MessagePack format. You may provide a second argument
-    to ensure that a certain number of bytes is allocated for the encoding buffer before encoding
-    begins.
-
-- `Encoder.registerExt<T>(ctor: new (...args: any[]) => T, type: number, encoderFn: (data: T) => Uint8Array)`
-
-    Register an encoder for an object class. `type` MUST be in the range `[-128, 127]` or a `RangeError`
-    will be thrown. Negative types are reserved by the MessagePack spec and SHOULD not be used, unless
-    this library does not provide an extension added to the spec or the implementation is found to be
-    inadequate.
-
-    **Standard Extensions Registered By Default**
-
-    - `-1 (Timestamp)`
-
-        JavaScript `Date` objects will be encoded using the standard `Timestamp` extension type, unless
-        overriden.
-
-- `Encoder.resize(newSize: number)`
-
-    Release the current encoding buffer and allocate a new one of `newSize` bytes.
-
-- `Encoder.clone(): Encoder`
-
-    Creates an independent clone of the `Encoder` with the same
-    configuration values and registered extensions.
-
-
-### `class Decoder`
-
-**static**
-
-- `Decoder.global: Decoder`
-
-    A global `Decoder` instance, purely for convenience.
-
-- `Decoder.decode<T = any>(data: ArrayBuffer | Uint8Array): T`
-
-    Convenience function to call `Decoder.global.decode()`.
-
-**constructor**
-
-- `new Decoder()`
-
-    Creates a new `Decoder` instance.
-
-**instance**
-
-- `Decoder.nilValue: null | undefined = null`
-
-    Value the MessagePack `nil` constant should be interpreted as.
-
-- `Decoder.allowInvalidUTF8 = false`
-
-    If false, an error will be thrown if a MessagePack `str` type is
-    encountered and the data is not valid UTF-8. If true, the `str`
-    data will be passed through opaquely as a `Uint8Array`.
-
-- `Decoder.allowUnknownExts = false`
-
-    If false, a `RangeError` will be thrown whenever an unrecognized extension type is encountered. If
-    true, the extension data will be passed through opaquely as a
-    [`Decoder.UnknownExt`](#interface-decoderunknownextseq).
-
-- `Decoder.mapBehavior = Decoder.MapBehavior.PreferJSON`
-
-    Determines how MessagePack `map` values are decoded. See
-    [`Decoder.MapBehavior`](#enum-decodermapbehavior) for options.
-
-- `Decoder.decode<T = any>(data: ArrayBuffer | Uint8Array): T`
-
-    Decode MessagePack data into a JS object or primitive.
-
-- `Decoder.clone(): Decoder`
-
-    Creates an independent clone of the `Decoder` with the same
-    configuration values and registered extensions.
-
-### `interface Decoder.UnknownExtSeq`
-
-Opaque tuple of an extension type identifier and the raw data associated with it.
-
-- `type: number`
-
-    The extension type which did not have a registered decoder.
-
-- `data: Uint8Array`
-
-    The opaque data.
-
-### `enum Decoder.MapBehavior`
-
-Determines `Decoder` behavior when a MessagePack `map` is encountered.
-
-- `PreferJSON = 0`
-
-    Maps will be decoded as native JS objects, unless a key is decoded
-    whose JS type evaluates to `object`, in which case all decoded keys
-    will be abandoned and the map will be decoded from scratch into an
-    ES6 Map which supports arbitrary key types.
-
-- `AlwaysJSON = 1`
-
-    Maps will be always be decoded as native JS objects. This means all
-    decoded keys will be coerced to strings, which is almost certainly
-    undesirable if decoding maps with objects or arrays as keys.
-
-- `AlwaysES6Map = 2`
-
-    Maps will always be decoded as ES6 Map objects.
+1. Use `resizeEncodingBuffer()` to tailor memory usage. Let's say you are encoding
+a massive object to MessagePack. `msgpack-es` will start the encoding buffer at a
+reasonable size, and _grow_ it by re-allocating a new/larger buffer and copying
+over the existing content each time it runs out of space. If you know roughly how
+much space will be needed before you encode, you should call
+`resizeEncodingBuffer()` to allocate enough memory up-front so no extra allocating
+and copying needs to happen throughout the process. Another use-case is when you
+need to _free_ memory. Let's say you encode one massive object to MessagePack,
+send the result somewhere, and from then on you only need to encode small bits of
+data. It doesn't make sense to keep around the giant buffer that was used for
+encoding the first value because it will just hog memory for no reason. Use
+`resizeEncodingBuffer()` to switch to a smaller buffer, which will allow the
+browser (or other runtime) to garbage-collect the old/large buffer.
+1. Use `encodeView()` instead of `encode()`. When you call `encode()`, the data
+you provide is encoded into a global buffer (`Uint8Array`) and then a _copy_ of
+it is returned. This is done for safety and ease-of-use. You can, however, use
+`encodeView()`, which is identical to `encode()` except that it returns a _view_
+of the underlying buffer used by the library. That means time/memory isn't spent
+copying the result, but it also means that if you keep the returned `Uint8Array`
+around as a variable and make more calls to `encode()`, your variable will
+end up pointing to garbage and you will lose the old encoding result. That said,
+if you are just, for example, encoding something to then immediately send it to
+the server using `fetch()`, the browser (or other runtime) will _already_ make a
+copy of the `Uint8Array` you give it, so `encodeView()` can save you an
+extra/wasted copy.
+1. If you know what you are doing and have a niche use-case where this library
+does a lot of unnecessary extra work, you might want to copy the code and modify
+it. It is licensed to the public domain so you can do whatever you want with it
+and do not even need to give attribution. That said, please be nice and give
+some sort of attribution even if it's just a comment in the code to tell
+coworkers where the MessagePack implementation originally came from. 🙂
