@@ -17,6 +17,14 @@
 ## Weaknesses
 
 - **Depends on** `TextEncoder`, `TextDecoder`, `Uint8Array`, and `DataView` APIs. These APIs allow the library to be small _and_ more performant, but you are out of luck if your ES runtime does not provide them and you cannot or will not polyfill them for some reason. However, all remotely-modern browsers (and Deno) provide these features.
+- **Does not handle cyclic objects**, i.e., object hierarchies where one of the nested objects has a
+property which points "back up" to one of its ancestors. `msgpack-es` will just go around-and-around,
+recursively encoding the same objects over and over until the runtime throws a stack overflow error or
+similar. One solution is to keep a set (preferably an ES6 `Set` instance) of _seen_ objects, and to consult
+that set each time an object is to be encoded. This would slow down the library and add bloat when cyclic
+objects are relatively rare, at least as far as encoding data goes, so I will not be adding this feature
+to this library and would recommend you "clean" objects first before using this library to encode them
+if necessary.
 - Encoding speed was not _the_ top priority. `msgpack-es` **uses branching** (if-statements, etc.) and **runtime type-checking** (`typeof`, etc.) to inspect values and choose the smallest MessagePack representation for them. If you know that all of the numbers you will be encoding are decimals, and speed is a big concern, you may want to copy the code and modify it to get rid of some of the if-statements and just always encode ES `number` values as MessagePack `float` values.
 - MessagePack, as a binary format, is **not as easy to inspect as JSON is**. You need a specialized way to view it when you are debugging issues with your application data.
 - **No streaming support**, i.e., if you need to encode/decode a large quantity of data
