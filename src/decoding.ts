@@ -317,15 +317,21 @@ function takeGeneric(): unknown {
  * @param data The buffer to decode from.
  */
 export function decode<T = unknown>(data: ArrayBuffer | Uint8Array): T {
+    // Store previous state in case decode is called while decoding
+    const prevBuffer = buffer
+    const prevView = view
+    const prevOffset = offset
+
     buffer = data instanceof Uint8Array ? data : new Uint8Array(data);
     view = new DataView(buffer.buffer, buffer.byteOffset);
     offset = 0;
 
     const result = takeGeneric() as T;
 
-    // Don't impede garbage collection!
-    buffer = undefined as any;
-    view = undefined as any;
+    // Revert state in case decode is called while decoding
+    buffer = prevBuffer
+    view = prevView
+    offset = prevOffset
 
     return result;
 }
