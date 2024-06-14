@@ -371,5 +371,17 @@ export function encodeView(value: any, reserve = 0): Uint8Array {
  *                encoding process.
  */
 export function encode(value: any, reserve = 0): Uint8Array {
-    return encodeView(value, reserve).slice();
+    // Store previous state in case encode is called while encoding
+    const prevBuffer = buffer
+    const prevView = view
+    const prevOffset = offset
+
+    const result = encodeView(value, reserve).slice();
+
+    // Revert state in case encode was called while encoding
+    buffer = prevBuffer
+    view = prevView
+    offset = prevOffset
+
+    return result
 }
