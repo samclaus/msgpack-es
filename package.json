@@ -1,6 +1,6 @@
 {
   "name": "msgpack-es",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Excellent ECMAScript MessagePack implementation for 85% of people.",
   "author": {
     "name": "Sam Claus",
