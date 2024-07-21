@@ -31,6 +31,7 @@ if necessary.
 that can't fit in memory all at once, `msgpack-es` will not work for you. I am open
 to exploring streaming support in the future, provided it does not affect any of
 the library's current strengths for people who do not care about streaming (most of them, presumably).
+- **Calling encode/decode from within extensions is not supported.** As far as this library is concerned, extensions are intended to have proprietary/low-level structure, **not** as "wrappers" for trivially decoding MessagePack objects/primitives into ES6 classes.
 
 ## Quick Start
 
